@@ -49,6 +49,7 @@ namespace ToLive.Flight
             var net = SystemAPI.GetSingleton<NetworkTime>();
             var tick = net.ServerTick.IsValid ? net.ServerTick.TickIndexForValidTick : 0u;
             var isServer = state.WorldUnmanaged.IsServer();
+            var rate = SystemAPI.TryGetSingleton<ClientServerTickRate>(out var tickRate) && tickRate.SimulationTickRate > 0 ? tickRate.SimulationTickRate : 60;
 
             var hasPhysics = SystemAPI.TryGetSingleton<PhysicsWorldSingleton>(out var physics);
             var hits = new NativeList<DistanceHit>(8, Allocator.Temp);
@@ -105,6 +106,16 @@ namespace ToLive.Flight
                 if (damage > 0f && c.Action != CombatAction.KnockedOut)
                 {
                     c.Power = math.max(0f, c.Power - damage);
+                    if (c.Power <= 0f)
+                    {
+                        // Same knock-out transition as a strike (CombatSystem.ApplyHits). It runs in the
+                        // predicted loop on client and server alike, from the same predicted inputs.
+                        c.Action = CombatAction.KnockedOut;
+                        c.ActionEndTick = tick + CombatSystem.Ticks(combatCfg.RespawnDelay, rate);
+                        c.Ballistic = 1;
+                        c.LockTarget = Entity.Null;
+                        c.ComboStep = 0; c.QueuedLight = 0; c.Charge = 0f;
+                    }
                     combat.ValueRW = c;
                 }
 

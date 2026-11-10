@@ -261,6 +261,7 @@ namespace ToLive.EditorTools
 
         public static string TraceLog = "";
         static double s_TraceEnd;
+        static string s_LastTraceLine;
 
         /// <summary>Records server player 1 height/speed/gear every editor frame for a few seconds.</summary>
         public static string StartTrace(float seconds)
@@ -284,8 +285,62 @@ namespace ToLive.EditorTools
                 if (players.Length == 0) return;
                 var t = em.GetComponentData<LocalTransform>(players[0]);
                 var f = em.GetComponentData<FlightState>(players[0]);
-                TraceLog += $"y={t.Position.y:0.0} v={math.length(f.Velocity):0} gear={f.Gear} pitch={f.Pitch:0}\n";
+                var c = em.HasComponent<ToLive.Combat.CombatState>(players[0]) ? em.GetComponentData<ToLive.Combat.CombatState>(players[0]) : default;
+                var line = $"power={c.Power:0} action={ToLive.Combat.CombatAction.Name(c.Action)} y={t.Position.y:0} v={math.length(f.Velocity):0}";
+                if (s_LastTraceLine != line) TraceLog += $"{EditorApplication.timeSinceStartup:0.00}s {line}\n";
+                s_LastTraceLine = line;
             }
+        }
+
+        public static string SetPlayerPower(float power)
+        {
+            foreach (var world in World.All)
+            {
+                if (!world.IsCreated || !world.IsServer()) continue;
+                var em = world.EntityManager;
+                using var q = em.CreateEntityQuery(ComponentType.ReadWrite<ToLive.Combat.CombatState>(), ComponentType.ReadOnly<GhostOwner>());
+                using var es = q.ToEntityArray(Allocator.Temp);
+                if (es.Length == 0) return "no player";
+                var c = em.GetComponentData<ToLive.Combat.CombatState>(es[0]);
+                c.Power = power;
+                em.SetComponentData(es[0], c);
+                return $"player power {power}";
+            }
+            return "no server";
+        }
+
+        /// <summary>Sends a debug RPC from the Nth client world in this process (0 = the host's own client).</summary>
+        public static string SendDebugFromClient(int clientIndex, int command)
+        {
+            var clients = ClientServerBootstrap.ClientWorlds;
+            if (clientIndex >= clients.Count) return "no such client";
+            var em = clients[clientIndex].EntityManager;
+            var e = em.CreateEntity(typeof(ToLive.Combat.DebugCommandRequest), typeof(SendRpcCommandRequest));
+            em.SetComponentData(e, new ToLive.Combat.DebugCommandRequest { Command = (byte)command });
+            return $"sent {command} from {clients[clientIndex].Name}";
+        }
+
+        /// <summary>Is the camera behind the local player, looking toward the lock target?</summary>
+        public static string CameraLockCheck()
+        {
+            var cam = Camera.main;
+            if (cam == null || !FlightCameraRig.HasLockTarget) return "no camera or no lock";
+            foreach (var world in World.All)
+            {
+                if (!world.IsCreated || !world.IsClient()) continue;
+                var em = world.EntityManager;
+                using var q = em.CreateEntityQuery(ComponentType.ReadOnly<LocalToWorld>(), ComponentType.ReadOnly<GhostOwnerIsLocal>());
+                using var es = q.ToEntityArray(Allocator.Temp);
+                if (es.Length == 0) continue;
+                var player = em.GetComponentData<LocalToWorld>(es[0]).Position;
+                var target = FlightCameraRig.LockTargetPosition;
+                var camPos = (float3)cam.transform.position;
+                var toTarget = math.normalizesafe(target - player);
+                var camToPlayer = math.normalizesafe(player - camPos);
+                var lookDot = math.dot((float3)cam.transform.forward, math.normalizesafe(target - camPos));
+                return $"behind={math.dot(camToPlayer, toTarget):0.00} (1 = directly behind) lookAtTarget={lookDot:0.00} (1 = target centred) camYaw={FlightCameraRig.Yaw:0}";
+            }
+            return "no local player";
         }
 
         public static string SetDummyPower(float power)

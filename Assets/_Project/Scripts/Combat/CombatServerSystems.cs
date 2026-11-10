@@ -114,14 +114,34 @@ namespace ToLive.Combat
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct DebugCommandServerSystem : ISystem
     {
+        /// <summary>NetworkId of the client world running in this process (the host's own player), or -1.</summary>
+        static int LocalClientNetworkId()
+        {
+            var client = ClientServerBootstrap.ClientWorld;
+            if (client == null || !client.IsCreated) return -1;
+            using var q = client.EntityManager.CreateEntityQuery(ComponentType.ReadOnly<NetworkId>());
+            return q.CalculateEntityCount() == 1 ? q.GetSingleton<NetworkId>().Value : -1;
+        }
+
         public void OnUpdate(ref SystemState state)
         {
             var ecb = new EntityCommandBuffer(Allocator.Temp);
             var maxPower = SystemAPI.TryGetSingleton<CombatConfig>(out var cfg) ? cfg.MaxPower : 100f;
-            foreach (var (cmd, _, rpcEntity) in SystemAPI.Query<RefRO<DebugCommandRequest>, RefRO<ReceiveRpcCommandRequest>>().WithEntityAccess())
+            var hostId = LocalClientNetworkId();
+            foreach (var (cmd, rpc, rpcEntity) in SystemAPI.Query<RefRO<DebugCommandRequest>, RefRO<ReceiveRpcCommandRequest>>().WithEntityAccess())
             {
                 var command = cmd.ValueRO.Command;
                 ecb.DestroyEntity(rpcEntity);
+
+                // Only the hosting player (the client running in this same process) may use debug
+                // commands. The sender is identified by the RPC's SourceConnection -> NetworkId.
+                var source = rpc.ValueRO.SourceConnection;
+                var senderId = SystemAPI.HasComponent<NetworkId>(source) ? SystemAPI.GetComponent<NetworkId>(source).Value : -1;
+                if (hostId < 0 || senderId != hostId)
+                {
+                    Debug.LogWarning($"[ToLive] Ignored debug command {command} from connection {senderId} (only the host may use debug commands)");
+                    continue;
+                }
 
                 if (command == DebugCommandRequest.ResetDummyAndBuilding)
                 {
