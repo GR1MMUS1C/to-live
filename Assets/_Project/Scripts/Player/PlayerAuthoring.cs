@@ -1,0 +1,36 @@
+using Unity.Entities;
+using UnityEngine;
+
+namespace ToLive.Player
+{
+    /// <summary>
+    /// Put on the Player prefab root (next to the Ghost Authoring Component).
+    /// Authoring components + Bakers are how GameObjects become ECS data: the Baker runs in the
+    /// editor and writes plain components, a bit like Unreal cooking a Blueprint's defaults.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public class PlayerAuthoring : MonoBehaviour
+    {
+        [Tooltip("Child that has the body MeshRenderer and a URP Material Property Base Color component.")]
+        public GameObject Body;
+
+        [Tooltip("Child that holds the visible meshes; leaned forward at speed for a flying pose.")]
+        public GameObject VisualPivot;
+
+        class Baker : Baker<PlayerAuthoring>
+        {
+            public override void Bake(PlayerAuthoring authoring)
+            {
+                var entity = GetEntity(TransformUsageFlags.Dynamic);
+                AddComponent<PlayerInput>(entity);
+                AddComponent<FlightState>(entity);
+                AddComponent<SupersonicFxState>(entity);
+                AddComponent(entity, new PlayerVisual
+                {
+                    Body = authoring.Body != null ? GetEntity(authoring.Body, TransformUsageFlags.Dynamic) : Entity.Null,
+                    Pivot = authoring.VisualPivot != null ? GetEntity(authoring.VisualPivot, TransformUsageFlags.Dynamic) : Entity.Null,
+                });
+            }
+        }
+    }
+}
