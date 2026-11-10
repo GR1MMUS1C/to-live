@@ -24,7 +24,8 @@ namespace ToLive.UI
         VisualElement m_Menu, m_Hud;
         TextField m_Address, m_Port;
         Label m_Status, m_Gear, m_Speed, m_Ping, m_Title;
-        Button m_HostButton, m_JoinButton, m_ResumeButton, m_LeaveButton;
+        Button m_HostButton, m_JoinButton, m_ResumeButton, m_LeaveButton, m_ResetButton, m_DestroyButton;
+        public static bool MenuOpen { get; private set; } = true;
         bool m_MenuOpen = true;
         float m_ConnectStartedAt = -1f;
         World m_World;
@@ -63,6 +64,8 @@ namespace ToLive.UI
             panel.Add(m_Title);
 
             m_ResumeButton = MakeButton(panel, "Resume", () => ShowMenu(false));
+            m_ResetButton = MakeButton(panel, "Reset dummy + rebuild building (F5)", () => { DebugCommands.Send(ToLive.Combat.DebugCommandRequest.ResetDummyAndBuilding); ShowMenu(false); });
+            m_DestroyButton = MakeButton(panel, "Stress test: destroy building (F9)", () => { DebugCommands.Send(ToLive.Combat.DebugCommandRequest.DestroyBuilding); ShowMenu(false); });
             m_LeaveButton = MakeButton(panel, "Leave game", LeaveGame);
             m_HostButton = MakeButton(panel, "Host", Host);
 
@@ -125,7 +128,12 @@ namespace ToLive.UI
         void ShowMenu(bool open)
         {
             m_MenuOpen = open;
+            MenuOpen = open;
             var inSession = NetSession.IsActive;
+            StyleEnum<DisplayStyle> inSessionStyle(bool _) => inSession ? DisplayStyle.Flex : DisplayStyle.None;
+            InputReader.LightPresses = InputReader.DashPresses = InputReader.LockOnPresses = 0;
+            if (m_ResetButton != null) m_ResetButton.style.display = inSessionStyle(open);
+            if (m_DestroyButton != null) m_DestroyButton.style.display = inSessionStyle(open);
             m_Menu.style.display = open ? DisplayStyle.Flex : DisplayStyle.None;
             m_Hud.style.display = inSession && !open ? DisplayStyle.Flex : DisplayStyle.None;
             m_ResumeButton.style.display = inSession ? DisplayStyle.Flex : DisplayStyle.None;
@@ -154,6 +162,12 @@ namespace ToLive.UI
             m_Status.text = $"Hosting on port {port}…";
             m_ConnectStartedAt = Time.realtimeSinceStartup;
             ShowMenu(false);
+        }
+
+        public void JoinAddress(string address)
+        {
+            m_Address.value = address;
+            Join();
         }
 
         public void Join()

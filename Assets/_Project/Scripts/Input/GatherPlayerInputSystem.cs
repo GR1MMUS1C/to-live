@@ -33,8 +33,18 @@ namespace ToLive.Input
                     Boost = (byte)(!blocked && InputReader.Boost ? 1 : 0),
                     LookYaw = FlightCameraRig.Yaw,
                     LookPitch = FlightCameraRig.Pitch,
+                    HeavyHeld = (byte)(!blocked && InputReader.HeavyHeld ? 1 : 0),
+                    GuardHeld = (byte)(!blocked && InputReader.GuardHeld ? 1 : 0),
                 };
+                if (!blocked)
+                {
+                    if (InputReader.LightPresses > 0) input.ValueRW.Light.Set();
+                    if (InputReader.DashPresses > 0) input.ValueRW.Dash.Set();
+                    if (InputReader.LockOnPresses > 0) input.ValueRW.LockOn.Set();
+                }
             }
+            // presses have been handed to Netcode (InputEvent) - consume them
+            InputReader.LightPresses = InputReader.DashPresses = InputReader.LockOnPresses = 0;
         }
     }
 

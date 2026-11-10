@@ -87,6 +87,8 @@ namespace ToLive.Net
                 ecb.SetComponent(player, new GhostOwner { NetworkId = networkId });
                 ecb.SetComponent(player, LocalTransform.FromPositionRotation(spawn, quaternion.EulerZXY(0, math.radians(yawDeg), 0)));
                 ecb.SetComponent(player, new FlightState { Yaw = yawDeg, Gear = FlightGear.Hover });
+                var maxPower = SystemAPI.TryGetSingleton<ToLive.Combat.CombatConfig>(out var combatCfg) ? combatCfg.MaxPower : 100f;
+                ecb.SetComponent(player, new ToLive.Combat.CombatState { Power = maxPower });
                 // Destroy the player automatically when this connection drops.
                 ecb.AppendToBuffer(connection, new LinkedEntityGroup { Value = player });
                 ecb.DestroyEntity(requestEntity);

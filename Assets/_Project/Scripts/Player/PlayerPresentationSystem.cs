@@ -32,13 +32,24 @@ namespace ToLive.Player
 
         protected override void OnUpdate()
         {
+            CompleteDependency();
+            // Body colour every frame: player colour (or dummy red), white flash when hit, grey when knocked out.
             var colors = GetComponentLookup<URPMaterialPropertyBaseColor>();
-            foreach (var (owner, visual) in SystemAPI.Query<RefRO<GhostOwner>, RefRW<PlayerVisual>>())
+            var owners = GetComponentLookup<GhostOwner>(true);
+            var combats = GetComponentLookup<ToLive.Combat.CombatState>(true);
+            var fxs = GetComponentLookup<ToLive.Combat.HitFxState>(true);
+            var now = SystemAPI.Time.ElapsedTime;
+            foreach (var (visual, entity) in SystemAPI.Query<RefRO<PlayerVisual>>().WithEntityAccess())
             {
-                if (visual.ValueRO.ColorApplied != 0 || !colors.HasComponent(visual.ValueRO.Body)) continue;
-                var c = s_Palette[(math.max(owner.ValueRO.NetworkId, 1) - 1) % s_Palette.Length];
+                if (!colors.HasComponent(visual.ValueRO.Body)) continue;
+                var c = owners.HasComponent(entity)
+                    ? s_Palette[(math.max(owners[entity].NetworkId, 1) - 1) % s_Palette.Length]
+                    : new float4(0.85f, 0.18f, 0.15f, 1f); // training dummy
+                if (combats.HasComponent(entity) && combats[entity].Action == ToLive.Combat.CombatAction.KnockedOut)
+                    c = new float4(0.3f, 0.3f, 0.32f, 1f);
+                if (fxs.HasComponent(entity) && fxs[entity].FlashUntil > now)
+                    c = new float4(1f, 1f, 1f, 1f);
                 colors[visual.ValueRO.Body] = new URPMaterialPropertyBaseColor { Value = c };
-                visual.ValueRW.ColorApplied = 1;
             }
 
             // Flying pose: lean the visual pivot forward with speed (superhero pose in cruise/boost).
@@ -59,13 +70,13 @@ namespace ToLive.Player
 
             foreach (var (flight, fx, ltw) in SystemAPI.Query<RefRO<FlightState>, RefRW<SupersonicFxState>, RefRO<LocalToWorld>>())
             {
-                var now = flight.ValueRO.Supersonic;
-                if (now != 0 && fx.ValueRO.WasSupersonic == 0)
+                var supersonic = flight.ValueRO.Supersonic;
+                if (supersonic != 0 && fx.ValueRO.WasSupersonic == 0)
                 {
                     Debug.Log($"[ToLive] Crossed supersonic at {ltw.ValueRO.Position}");
                     SupersonicRing.Spawn(ltw.ValueRO.Position, ltw.ValueRO.Forward);
                 }
-                fx.ValueRW.WasSupersonic = now;
+                fx.ValueRW.WasSupersonic = supersonic;
             }
         }
     }

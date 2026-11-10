@@ -48,11 +48,53 @@ The milestone covers:
 
 Out of scope for M1: combat, destruction, crowds, cloud services, relay.
 
+## Milestone 2: impact combat and one fully breakable building
+
+**Gate:** punching someone through the building is fun, stays in sync for two players, and holds frame rate. Debris budgets are measured (see [PERF.md](PERF.md)).
+
+**Combat.** Short, impact-driven chains where the buildings do the damage:
+
+- Soft lock-on.
+- A 3-hit light chain whose 3rd hit launches the target.
+- A charged heavy strike.
+- Dash, used to chase a launched target. A strike on a launched target is a **finisher** that drives it where the camera aims.
+- Guard: from the front it soaks most damage and prevents launching.
+- Power (health) with a HUD bar. At zero you are knocked out and respawn after a few seconds.
+- A launched body, or a player boosting above 150 m/s, smashes through building chunks: it loses some speed and takes damage.
+- A server-simulated training dummy for solo testing.
+- Hit feedback: hit-stop, camera shake, a white flash, knockback trails and impact rings, plus SFX hooks (`CombatFx.OnImpact`).
+- All combat numbers are on **Combat Config**.
+
+**Netcode for hits.**
+
+- The combat state machine (`CombatSystem`) runs in the prediction loop. The attacker's own client predicts its moves, homing, hit-stop and hit effects instantly.
+- **Only the server applies hits.** It checks the strike sphere against each target's position rewound to what the attacker saw. It does this with a small per-tick position history and the attacker's `CommandDataInterpolationDelay`, which is the documented server-side rewind approach, done with distance checks instead of physics colliders.
+- Damage and knockback are written into the victim's predicted ghost state (`CombatState`, `FlightState`). The victim's client gets them in the next snapshot and re-predicts from there.
+- Knockback runs in the same predicted flight code, so there is no rubber-banding beyond the unavoidable one-RTT delay before the victim learns it was hit.
+
+**Breakable building (our own pre-fracture pipeline).**
+
+- `Tools > To Live > Make Selected Building Breakable` (also run by the district generator) cuts a box building into about 120 **layer-1** chunks:
+  - storey bands of random height
+  - wall panels cut at jittered positions, sometimes split again vertically
+  - floor slab rings and a central core
+- Each chunk has 4 to 8 **layer-2** pieces, used as debris.
+- Intact chunks are static colliders in the main (predicted) physics world.
+- The **server alone** decides breaks and structural collapse: a flood-fill from grounded chunks, where unsupported chunks fall.
+- Only a **128-bit broken mask** (plus a generation counter and the last impact velocity) is replicated, on a pre-spawned ghost. That's compact, delta-compressed, and correct for late joiners.
+- Each machine applies the mask by removing the chunk's collider and hiding it. The client applies it when the snapshot arrives, so about one RTT after the server.
+- **Debris is cosmetic:** it is simulated per client in a client-only physics world (index 1, sharing static colliders), as the Netcode docs recommend.
+  - Settled pieces drop their physics body.
+  - Live and total caps apply, and spawning is spread over frames.
+
 ## Where things live
 
 | What | Where |
 |---|---|
 | Flight tuning (all numbers) | `Flight Config` object in the District subscene (`FlightConfigAuthoring`) |
+| Combat tuning | `Combat Config` in the District subscene (`CombatConfigAuthoring`) |
+| Debris caps / feel | `Debris Config` in the District subscene (`DebrisConfigAuthoring`) |
+| Breakable building generator | `Assets/_Project/Editor/BreakableBuildingGenerator.cs` |
 | Camera tuning | `Game Systems` object in `Main.unity` (`FlightCameraRig`) |
 | Input bindings | `Assets/_Project/Input/ToLive.inputactions` |
 | Code | `Assets/_Project/Scripts/` (Net, Player, Flight, Input, CameraRig, UI) |

@@ -33,15 +33,63 @@ This is written for someone who knows Unreal but is new to Unity.
 | Boost (hold, while cruising) | Left stick click | F |
 | Menu | Start | Esc |
 
+### Combat controls (Milestone 2)
+
+| Action | Gamepad | Keyboard / mouse |
+|---|---|---|
+| Light strike (press 3 times for the chain; the 3rd hit launches) | X | Left mouse button |
+| Heavy strike (hold to charge, release to hit) | Y | Right mouse button |
+| Dash (toward the lock target, or the stick direction) | RB | Left Alt |
+| Guard (hold) | LB | Q |
+| Lock-on (toggle) | Right stick click | Tab |
+
+### Debug keys
+
+| Key | What it does |
+|---|---|
+| F3 | Show or hide the performance overlay: FPS, frame time, ping, live and total debris, broken chunks |
+| F5 | Reset the training dummy and rebuild the building (also in the Esc menu) |
+| F6 | Toggle the training dummy holding guard (for testing guard) |
+| F9 | Stress test: destroy the whole building at once (also in the Esc menu) |
+
 ### Gears
 
 - **Hover** (default): moves relative to the camera at up to 15 m/s and stops precisely when you let go.
 - **Cruise**: hold thrust. You fly where the camera points, accelerate to 80 m/s and bank into turns.
 - **Boost**: while cruising, also hold boost to accelerate to 400 m/s. Turning is much slower.
   - Passing **343 m/s** (the speed of sound) logs "Crossed supersonic" in the Console and shows a white placeholder ring.
-- You can't pass through buildings or the ground; you slide along them. There is no damage.
+- You can't pass through ordinary buildings or the ground; you slide along them.
+- The **breakable building** near spawn 1 is the exception. A launched body, or a player boosting faster than 150 m/s, smashes through its chunks. They lose some speed and take a little damage.
 
 The bottom-left overlay shows the current **gear**, **speed** (m/s) and **ping**.
+
+## 1b. Five-minute combat and destruction test (Milestone 2)
+
+Use a gamepad if you have one; the keyboard equivalents are in the tables above.
+
+1. **Get there.** Press Play, click **Host**, then press **F3** to see the overlay.
+   - Below you to the south-east there's a slightly darker, tiled building: the **breakable building**.
+   - A **red capsule**, the training dummy, hovers in front of it.
+   - Dive down (point the camera down and hold the right trigger) and stop about 10 m from the dummy, on the side facing away from the building.
+2. **Lock on.** Click the right stick (Tab). A red diamond marks the dummy, and its power bar appears at the top. The camera swings to keep both of you in view.
+3. **Light chain.** Press X three times in rhythm. You home in, and hits 1 and 2 stagger the dummy. Hit 3 **launches** it up and away toward the building, leaving a white trail.
+4. **Finisher.** Straight after the launch, press **RB** to dash after it, then **X**. The dummy is driven hard in the direction your camera points.
+   - Aim at the building or the ground.
+   - Chunks break where it hits, debris falls and settles, and the overlay's "Broken chunks" count rises.
+5. **Heavy.** Press F5 to reset. Hold **Y** for about a second (the HUD shows CHARGING), then release. You get a big knockback, which scales with the charge.
+6. **Guard.** Press F6 so the dummy guards, then hit it from the front. It takes only a sliver of damage and can't be launched. Press F6 again to turn guard off.
+7. **Knock-out.** Keep hitting the dummy until its power bar is empty. It turns grey, then respawns at home after about 4 seconds.
+8. **Smash with your body.** Fly high, point at the building, then cruise and boost straight into it. Above 150 m/s you punch through, taking a little damage.
+9. **Collapse.** Break the lowest ring of the building with launches or a boost dive. Anything left without support falls.
+   - For the full stress case, press **F9**: the whole building comes down at once. Watch FPS on the overlay.
+10. **Rebuild.** Press **F5**: the building and the dummy are restored.
+
+To tune the combat numbers (damage, knockback, timing windows, hit-stop, break thresholds):
+
+1. Open the District subscene: select **District (SubScene)** and tick **Open**.
+2. Select **Combat Config**.
+
+Debris settings are on **Debris Config**. The cap measurements behind its defaults are in [PERF.md](PERF.md).
 
 ## 2. Two players on one PC (Multiplayer Play Mode)
 
@@ -55,6 +103,9 @@ The **Multiplayer Play Mode** package is installed. It runs a second, lightweigh
    - A second Editor window opens. The first time, it takes a minute.
 4. In the **main** Editor, click **Host**.
 5. In the **second** Editor window, leave the IP as `127.0.0.1` and the port as `7979`, then click **Join**.
+   - You can also join later, after some of the building is broken. The late player sees exactly the same broken chunks.
+   - On both screens, the broken chunks should match exactly, because the server decides them.
+   - Debris is cosmetic and simulated separately on each PC, so the piles can look a little different on each screen.
 6. Each window controls its own player, and you should see the other player moving in each window.
    - Player 1 is **orange** and player 2 is **blue**.
    - The yellow marker shows which way each player faces.
