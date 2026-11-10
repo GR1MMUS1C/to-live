@@ -106,6 +106,12 @@
       "source": "builtin",
       "dependencies": {}
     },
+    "com.unity.multiplayer.playmode": {
+      "version": "3.0.0",
+      "depth": 0,
+      "source": "builtin",
+      "dependencies": {}
+    },
     "com.unity.netcode": {
       "version": "6.6.0",
       "depth": 0,

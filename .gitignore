@@ -68,3 +68,7 @@ crashlytics-build.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# Entities: generated subscene dependency cache
+/[Aa]ssets/SceneDependencyCache/
+/[Aa]ssets/SceneDependencyCache.meta
