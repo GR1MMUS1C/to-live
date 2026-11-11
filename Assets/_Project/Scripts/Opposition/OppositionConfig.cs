@@ -26,7 +26,7 @@ namespace ToLive.Opposition
         public Entity PolicePrefab, GunshipPrefab, AntiGodPrefab, RocketPrefab, StatePrefab;
 
         // heat
-        public float HeatPerChunk, HeatPerCollapsedChunk, HeatPerUnitDamage, HeatPerEruption;
+        public float HeatPerChunk, HeatPerCollapsedChunk, HeatPerUnitDamage, HeatPerEruption, HeatPerCivilianDeath, TrustedHeatScale;
         public float Level1, Level2, Level3, MaxHeat;
         public float QuietTime, DecayPerSecond;
         public float BlameQuietTime, BlameDecayPerSecond;

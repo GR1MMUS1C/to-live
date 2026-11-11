@@ -181,6 +181,89 @@ Every number is on **Power Config**.
 
 **HUD.** Heat pips + level name + progress, rival name plate (when locked on or within 60 m), incoming-fire warning with edge arrow for the anti-god beam, SURGE SUPPRESSED, small health bars over recently hit units. UI Toolkit only.
 
+## Milestone 4A: crowds, the district meter, real fuel, recolouring
+
+**Intent.** Power is borrowed from people. Two fuels, trust and dominance (fear), one visible meter per district, no global good/evil score. Both players draw from the same population, so belief and fear are scarce. Gate: a 15-minute session tells a different story depending on how you played.
+
+**Citizens (a few hundred, server decided, compact on the wire).**
+
+- The server simulates every citizen as plain data (a buffer on a server singleton, not entities, not ghosts): position along their street, mood, alive.
+- **What players must agree on is replicated, compactly**, on one district ghost:
+  - an alive bit per citizen;
+  - a 2-bit mood per citizen (wander, gather, flee, cower);
+  - the last 4 violence points;
+  - each god's trust and fear;
+  - the meter, the leader and population;
+  - the cause feed.
+- **Bodies** are static-optimised ghosts (sent once, then free; late joiners get them).
+- **Homes** are baked into the subscene, so they cost no bandwidth.
+- **Clients run look-alike local agents** from that state: they walk, gather and cheer (little jumps), flee along their street away from the latest violence, or cower. Their exact positions are cosmetic and only roughly match the server's; a death puts the body where the server says.
+- **Why:** one ghost per citizen was measured at about 880 bytes per snapshot for 320 citizens (worst 1,891 B, over one packet). The compact state costs about 8 bytes per snapshot. See [PERF.md](PERF.md).
+
+**Behaviour.**
+
+- **Wander** along the street near home.
+- **Gather and cheer** within 45 m of a god they trust.
+- **Flee** (and **cower** when very close) from violence: hits, gunfire, rockets, beams, eruptions, fast bodies, supersonic passes. They also flee from a god they fear.
+- **Dead:** the body stays, with a blood pool. No dismemberment.
+
+**Deaths, all server decided, blamed with the same Responsible rules as heat** (a thrown or launched body is its launcher's fault):
+
+- falling chunks (direct breaks and structural collapse);
+- launched or fast bodies at street level;
+- player and rival beams;
+- eruptions (inner half of the radius);
+- rockets;
+- very low supersonic passes;
+- the anti-god beam.
+
+They all go through one queue, `CrowdHazards` / `CrowdHazard`.
+
+**District source** (`DistrictSource` / `DistrictEvent`, the one place trust and fear change, rates on **District Config**):
+
+| Source | Effect |
+|---|---|
+| Staying near a crowd without harming it (not boosting) | +trust per second |
+| Destroying an army unit that threatened people | +trust |
+| Knocking out the rival while people watch | +trust |
+| Civilian deaths you caused | +fear, −trust, plus heat and a short fear-fuel spike |
+| Destruction (chunks) | +fear, a little −trust |
+| An eruption near a crowd | +fear, −trust |
+| A reckless supersonic pass over people | −trust, a little fear |
+
+- Standing fades slowly (half-life about 2 minutes).
+- The **meter** is total fear against total trust. The **leader** is the god with the most standing; **hold** is how strongly they hold the district.
+- Each god's **alignment** (the look of their power) now follows their own trust and fear. The [ ] keys add debug trust or fear.
+
+**Fuel.** `SurgeFuel` is unchanged as an interface. Its producers are now the crowd:
+
+- Every half second, each god gets fuel from the living citizens watching within 70 m.
+- An awe share is paid even with no standing; trust plus fear raises it to full.
+- Killing people pays a short fear spike, but dead citizens never pay again. So slaughter is a short-term gain and a long-term loss.
+- The milestone 3 placeholder producers (damage, chunks) are off while **Crowd Fuel** is on. F4 stays as debug.
+
+**Heat follows dominance.**
+
+- Every god-blamed heat event is scaled by how much the district fears rather than trusts that god (a fully trusted god: `TrustedHeatScale`, default 0.15).
+- Civilian deaths add heat.
+- A trusted god who only fights the rival draws little or no army.
+
+**Recolouring.** The base world stays muted. A glowing crown around the top of every building, the lamps at every intersection and a light sky tint take the leader's colour: the calm cyan family for trust, crimson for dominance. Brightness follows how strongly the district is held. It's done with per-instance colour overrides on one unlit material asset and a runtime volume, never `Shader.Find`.
+
+**HUD.**
+
+- The district meter at the bottom: trust on the left, dominance on the right, with a marker.
+- Who holds the district and how, and the number of people alive.
+- Your trust and fear.
+- A short cause feed above the meter ("+trust: protected the crowd", "+fear: 12 civilians killed").
+
+**Hooks for 4B.**
+
+- Crises: new `DistrictSource` producers and new `CrowdHazard` kinds.
+- Rebuilding and scarring: read `DistrictState` hold and alignment.
+- Contesting: standings are already per god.
+- "Drained and expelled": replaces the respawn in `CombatServerSystem` and `RivalSystem`.
+
 ## Where things live
 
 | What | Where |
@@ -193,10 +276,11 @@ Every number is on **Power Config**.
 | Power look (colours, halo, wash) | `Power Look` in `Main.unity` (`PowerLook`) |
 | Post-processing | `Assets/_Project/Rendering/BaseLook.asset`, `PowerSurge.asset` |
 | Heat and response force tuning | `Opposition Config` in the District subscene (`OppositionConfigAuthoring`) |
+| Crowd, trust/fear sources, crowd fuel | `District Config` in the District subscene (`DistrictConfigAuthoring`) |
 | Rival tuning (difficulty presets) | `Rival Config` in the District subscene (`RivalConfigAuthoring`) |
 | Camera tuning | `Game Systems` object in `Main.unity` (`FlightCameraRig`) |
 | Input bindings | `Assets/_Project/Input/ToLive.inputactions` |
-| Code | `Assets/_Project/Scripts/` (Net, Player, Flight, Input, CameraRig, Combat, Destruction, Power, Opposition, Rival, UI) |
+| Code | `Assets/_Project/Scripts/` (Net, Player, Flight, Input, CameraRig, Combat, Destruction, Power, Opposition, Rival, District, UI) |
 | Editor generators | `Assets/_Project/Editor/ToLiveSetup.cs` (menu **Tools > To Live**) |
 
 ## Key technical decisions

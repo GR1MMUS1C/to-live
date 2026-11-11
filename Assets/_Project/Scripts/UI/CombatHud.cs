@@ -42,6 +42,10 @@ namespace ToLive.UI
         float m_AnnounceUntil;
         static readonly string[] s_HeatNames = { "CALM", "POLICE", "MILITARY", "ANTI-GOD" };
         static readonly string[] s_Difficulty = { "EASY", "NORMAL", "HARD" };
+        // milestone 4A: the district meter, population, your standing and the cause feed
+        VisualElement m_DistrictPanel, m_MeterMarker, m_MeterTrust, m_MeterFear;
+        Label m_DistrictLabel, m_StandingLabel;
+        readonly Label[] m_FeedLines = new Label[5];
         static Color s_FlashColor;
         static float s_FlashTime, s_FlashDuration;
 
@@ -70,6 +74,7 @@ namespace ToLive.UI
             m_Suppressed.style.color = new Color(1f, 0.35f, 0.3f);
 
             BuildOppositionHud();
+            BuildDistrictHud();
 
             // "SURGE READY" prompt, centre-bottom.
             m_Ready = MakeLabel(m_Root, "", 30);
@@ -116,6 +121,76 @@ namespace ToLive.UI
             m_Overlay.style.left = StyleKeyword.Auto;
             m_Overlay.style.right = 24;
             m_OverlayText = MakeLabel(m_Overlay, "", 15);
+        }
+
+        void BuildDistrictHud()
+        {
+            // bottom centre: trust (cyan) <- meter -> dominance (crimson), population, your standing
+            m_DistrictPanel = Panel(m_Root, 0, 0, 460);
+            m_DistrictPanel.style.top = StyleKeyword.Auto;
+            m_DistrictPanel.style.bottom = 22;
+            m_DistrictPanel.style.left = new Length(50, LengthUnit.Percent);
+            m_DistrictPanel.style.marginLeft = -230;
+            m_DistrictLabel = MakeLabel(m_DistrictPanel, "", 14);
+            var bar = new VisualElement { pickingMode = PickingMode.Ignore };
+            bar.style.height = 12; bar.style.flexDirection = FlexDirection.Row; bar.style.marginTop = 3; bar.style.marginBottom = 3;
+            m_DistrictPanel.Add(bar);
+            m_MeterTrust = new VisualElement { pickingMode = PickingMode.Ignore };
+            m_MeterTrust.style.width = new Length(50, LengthUnit.Percent);
+            m_MeterTrust.style.backgroundColor = new Color(0.25f, 0.75f, 0.95f, 0.75f);
+            m_MeterFear = new VisualElement { pickingMode = PickingMode.Ignore };
+            m_MeterFear.style.width = new Length(50, LengthUnit.Percent);
+            m_MeterFear.style.backgroundColor = new Color(0.9f, 0.1f, 0.25f, 0.75f);
+            bar.Add(m_MeterTrust); bar.Add(m_MeterFear);
+            m_MeterMarker = new VisualElement { pickingMode = PickingMode.Ignore };
+            m_MeterMarker.style.position = Position.Absolute;
+            m_MeterMarker.style.width = 4; m_MeterMarker.style.height = 18; m_MeterMarker.style.top = -3;
+            m_MeterMarker.style.backgroundColor = Color.white;
+            bar.Add(m_MeterMarker);
+            var ends = new VisualElement { pickingMode = PickingMode.Ignore };
+            ends.style.flexDirection = FlexDirection.Row; ends.style.justifyContent = Justify.SpaceBetween;
+            m_DistrictPanel.Add(ends);
+            MakeLabel(ends, "TRUST", 11).style.color = new Color(0.5f, 0.85f, 1f);
+            m_StandingLabel = MakeLabel(ends, "", 12);
+            MakeLabel(ends, "DOMINANCE", 11).style.color = new Color(1f, 0.4f, 0.5f);
+
+            // cause feed, above the meter
+            for (var i = 0; i < m_FeedLines.Length; i++)
+            {
+                var l = MakeLabel(m_Root, "", 15);
+                l.style.position = Position.Absolute;
+                l.style.bottom = 100 + i * 20;
+                l.style.left = 0; l.style.right = 0;
+                l.style.unityTextAlign = TextAnchor.MiddleCenter;
+                m_FeedLines[i] = l;
+            }
+        }
+
+        void UpdateDistrictHud()
+        {
+            var present = ToLive.District.DistrictView.Present;
+            m_DistrictPanel.style.display = present ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!present) { foreach (var l in m_FeedLines) l.text = ""; return; }
+            var v = ToLive.District.DistrictView.Meter; // -1 trust .. +1 dominance
+            var who = !ToLive.District.DistrictView.HasLeader ? "nobody holds it" :
+                (ToLive.District.DistrictView.LeaderIsLocal ? "you hold it" : "held by another god") +
+                (ToLive.District.DistrictView.LeaderAlignment < 0f ? " (trust)" : " (dominance)");
+            m_DistrictLabel.text = $"DISTRICT   {who}   ·   people {ToLive.District.DistrictView.Alive} / {ToLive.District.DistrictView.Population}";
+            m_MeterTrust.style.width = new Length((1f - v) * 50f, LengthUnit.Percent);
+            m_MeterFear.style.width = new Length((1f + v) * 50f, LengthUnit.Percent);
+            m_MeterMarker.style.left = new Length((v + 1f) * 50f, LengthUnit.Percent);
+            m_StandingLabel.text = $"you: trust {ToLive.District.DistrictView.MyTrust:0}   fear {ToLive.District.DistrictView.MyFear:0}";
+            var feed = ToLive.District.DistrictView.Feed;
+            for (var i = 0; i < m_FeedLines.Length; i++)
+            {
+                var idx = feed.Count - 1 - i;
+                if (idx < 0) { m_FeedLines[i].text = ""; continue; }
+                var (text, time, good) = feed[idx];
+                var age = Time.unscaledTime - time;
+                var a = Mathf.Clamp01(1f - (age - 4f) / 2f);
+                m_FeedLines[i].text = a > 0f ? text : "";
+                m_FeedLines[i].style.color = good ? new Color(0.55f, 0.9f, 1f, a) : new Color(1f, 0.45f, 0.5f, a);
+            }
         }
 
         void BuildOppositionHud()
@@ -361,6 +436,7 @@ namespace ToLive.UI
                 m_OverlayText.text = $"{m_FpsText}\nPing {Ping():0} ms\nLive debris {DebrisSystem.LiveDebris}  (total {DebrisSystem.TotalDebris})\n" +
                                      $"Broken chunks {DebrisSystem.BrokenChunks} / {DebrisSystem.ChunkCount}\nF4 fill surge  F5 reset  F6 dummy guard  F7 tier  F8 dummy ritual  F9 destroy  [ ] alignment\nPgUp/PgDn heat  Home spawn units  End clear units\nIns rival on/off  Del rival difficulty";
             UpdateOppositionHud();
+            UpdateDistrictHud();
             if (!inGame || !FlightCameraRig.HasLocalPlayer)
             {
                 m_TargetPanel.style.display = DisplayStyle.None;

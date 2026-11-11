@@ -128,7 +128,8 @@ namespace ToLive.Combat
             var tick = SystemAPI.GetSingleton<NetworkTime>().ServerTick.TickIndexForValidTick;
             var senderAlignment = 0f;
             byte senderTier = 1;
-            foreach (var (owner, power) in SystemAPI.Query<RefRO<GhostOwner>, RefRW<ToLive.Power.PowerState>>())
+            var senderEntity = Entity.Null;
+            foreach (var (owner, power, ownerEntity) in SystemAPI.Query<RefRO<GhostOwner>, RefRW<ToLive.Power.PowerState>>().WithEntityAccess())
             {
                 if (owner.ValueRO.NetworkId != senderId) continue;
                 var p = power.ValueRO;
@@ -142,7 +143,12 @@ namespace ToLive.Combat
                 power.ValueRW = p;
                 senderAlignment = p.Alignment;
                 senderTier = p.Tier;
+                senderEntity = ownerEntity;
             }
+
+            // milestone 4: alignment follows trust/fear, so the [ ] keys add debug trust / fear in the district
+            if (command == DebugCommandRequest.AlignmentDown) ToLive.District.DistrictSource.Add(state.EntityManager, senderEntity, 10f, 0f, ToLive.District.Cause.Debug);
+            if (command == DebugCommandRequest.AlignmentUp) ToLive.District.DistrictSource.Add(state.EntityManager, senderEntity, 0f, 10f, ToLive.District.Cause.Debug);
 
             if (command == DebugCommandRequest.BenchRitualSetup && SystemAPI.TryGetSingleton<BuildingGraph>(out var graph))
             {
@@ -217,6 +223,11 @@ namespace ToLive.Combat
 
                 if (command >= DebugCommandRequest.FillSurgeMeter && command <= DebugCommandRequest.BenchRitualSetup)
                     ApplyPowerDebug(ref state, command, senderId);
+
+                if (command == DebugCommandRequest.CrowdReset && SystemAPI.TryGetSingletonRW<ToLive.District.CrowdServer>(out var crowd))
+                    crowd.ValueRW.PendingReset = math.max(1, cmd.ValueRO.Arg * 10);
+                if (command == DebugCommandRequest.CitizenGhostProbe)
+                    ToLive.District.CitizenGhostProbeSystem.Pending = cmd.ValueRO.Arg * 10;
 
                 if (command >= DebugCommandRequest.HeatUp && command <= DebugCommandRequest.BenchUnits &&
                     SystemAPI.TryGetSingletonRW<ToLive.Opposition.HeatDirector>(out var director))

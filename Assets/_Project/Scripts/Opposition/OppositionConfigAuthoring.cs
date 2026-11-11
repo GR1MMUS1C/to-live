@@ -45,6 +45,9 @@ namespace ToLive.Opposition
         public float HeatPerCollapsedChunk = 0.5f;
         [Tooltip("Heat per point of damage dealt to a response unit.")] public float HeatPerUnitDamage = 0.4f;
         public float HeatPerEruption = 25f;
+        [Tooltip("Heat per civilian a god kills (milestone 4).")] public float HeatPerCivilianDeath = 2f;
+        [Tooltip("Heat a fully trusted god causes, as a fraction (1 = a feared god). Scales every god-blamed heat source by how much the district fears rather than trusts them.")]
+        [Range(0f, 1f)] public float TrustedHeatScale = 0.15f;
 
         [Header("Heat levels")]
         [Tooltip("Heat needed for level 1 (police).")] public float Level1 = 10f;
@@ -110,7 +113,7 @@ namespace ToLive.Opposition
                     AntiGodPrefab = a.AntiGodPrefab != null ? GetEntity(a.AntiGodPrefab, TransformUsageFlags.Dynamic) : Entity.Null,
                     RocketPrefab = a.RocketPrefab != null ? GetEntity(a.RocketPrefab, TransformUsageFlags.Dynamic) : Entity.Null,
                     StatePrefab = a.StatePrefab != null ? GetEntity(a.StatePrefab, TransformUsageFlags.None) : Entity.Null,
-                    HeatPerChunk = a.HeatPerChunkBroken, HeatPerCollapsedChunk = a.HeatPerCollapsedChunk, HeatPerUnitDamage = a.HeatPerUnitDamage, HeatPerEruption = a.HeatPerEruption,
+                    HeatPerChunk = a.HeatPerChunkBroken, HeatPerCollapsedChunk = a.HeatPerCollapsedChunk, HeatPerUnitDamage = a.HeatPerUnitDamage, HeatPerEruption = a.HeatPerEruption, HeatPerCivilianDeath = a.HeatPerCivilianDeath, TrustedHeatScale = a.TrustedHeatScale,
                     Level1 = a.Level1, Level2 = a.Level2, Level3 = a.Level3, MaxHeat = a.MaxHeat,
                     QuietTime = a.QuietTime, DecayPerSecond = a.DecayPerSecond,
                     BlameQuietTime = a.BlameQuietTime, BlameDecayPerSecond = a.BlameDecayPerSecond,

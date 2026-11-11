@@ -63,7 +63,7 @@ Pressing R3 for the ritual also toggles lock-on, and L3 is boost. That's harmles
 | F9 | Stress test: destroy the whole building at once (also in the Esc menu) |
 | F4 | Fill your surge meter (also ends surge or burnout, for quick retests) |
 | F7 | Toggle your tier (1 or 2) |
-| [ and ] | Slide your alignment toward trust or toward dominance (0.25 per press) |
+| [ and ] | Add 10 debug trust or fear in the district (your alignment follows your trust and fear from milestone 4A) |
 | F8 | The training dummy performs the ritual, using your alignment and tier, so you can watch from outside |
 | Page Up / Page Down | Heat up or down one whole level (debug heat is blamed on you, so the army comes for you) |
 | Home | Spawn one of each response unit (police drone, gunship, anti-god weapon); they stay even at heat 0 |
@@ -177,6 +177,47 @@ Do this solo (one human): the **rival** is only present when one human is connec
 8. Try **Delete** for easy or hard. Normal should be beatable if you guard its chains and punish after its heavy.
 
 To tune: heat and units are on **Opposition Config**, the rival's three difficulty presets and ranges on **Rival Config** (both in the District subscene).
+
+## 1e. Milestone 4A: the crowd decides (about 15 minutes, play twice)
+
+Play this twice, the same way each time but with the opposite attitude, then compare.
+
+**Before you start:**
+- The bar at the bottom of the screen is the **district meter**: trust (cyan) on the left, dominance (crimson) on the right. It shows who holds the district, how many people are alive and your own trust and fear.
+- The lines above it explain why it moved.
+- Restart Play between the two runs, so each starts with a fresh crowd.
+- Press **Insert** if you want the rival out of the way.
+
+**Run 1: protector (about 7 minutes).**
+
+1. Fly down to a street with people on it (small grey figures on the sidewalks) and hover there for a while. Don't boost. Watch "+trust: protected the crowd" appear, and the people start to gather around you and cheer (little jumps).
+2. Raise heat with **Page Up** and fight the army **away from the people**. Each army unit you destroy near a crowd gives trust.
+3. Bring the rival in (**Insert**) and beat it in front of a crowd: "+trust: defeated the rival in front of the crowd".
+4. Watch the city: the roof crowns and street lamps turn cyan, getting brighter as your hold grows, and the sky takes a slight cyan tint. Your halo calms toward trust.
+5. Note your surge meter. The crowd pays fuel while people watch you, so you can surge.
+
+**Run 2: tyrant (about 7 minutes).**
+
+1. Same streets. Boost through the crowd at street level, beam the street, do the ritual among people, and bring the breakable building down on the street.
+2. People flee and cower, and they keep running from you once they fear you. Bodies stay where people fell, with a blood pool.
+3. The meter swings to dominance, the city turns crimson, and your halo goes crimson.
+4. Heat climbs quickly, because killing people and destroying things now raise heat. The army arrives in force.
+5. The surge meter: killing gives a short spike of fear fuel, but the dead never pay again, and frightened people run away instead of watching. Fuel dries up over time.
+
+**Compare:**
+- the meter and city colour;
+- how many people are alive;
+- whether the crowd gathers or flees;
+- how much army came;
+- how easy it was to surge.
+
+**To tune:** everything is on **District Config** in the District subscene:
+- the citizen count;
+- reaction distances;
+- every trust and fear rate;
+- the crowd fuel rates.
+
+**Heat follows dominance.** The **Trusted Heat Scale** and **Heat Per Civilian Death** settings are on **Opposition Config**.
 
 ## 2. Two players on one PC (Multiplayer Play Mode)
 

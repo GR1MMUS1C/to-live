@@ -164,3 +164,42 @@ At 10 units, police drones were the largest share (~75 B) because they strafe co
 - **Bandwidth and readability are the limits.** At 32 units the worst snapshot is larger than one packet (about 1,400 B), and the sky is too busy to read the telegraphs.
 - **Defaults:** police 6, gunships 3, anti-god 1, **total 10**. That keeps snapshots around 185 B (worst ~510 B), so there is room for the crowds of milestone 4. The measured headroom allows raising the total to about 16–20 if fights feel thin.
 - **Projectiles:** tracers cost nothing extra (they are a few fields on the unit's ghost). Rockets are cheap ghosts because only a handful are alive at once.
+
+# Crowds (Milestone 4A)
+
+Measured on the same machine on 2026-11-11.
+
+## Two ways to network a few hundred citizens
+
+Measured with Netcode's snapshot metrics (`DevProbe.StartNetSample`, received by a client in the Editor, 1 player):
+
+| Option | What is replicated | Citizen cost per snapshot | Whole snapshot avg / worst |
+|---|---|---|---|
+| **A: one ghost per citizen** (`CitizenGhostProbe`, 320 walking citizens, interpolated) | position + mood per citizen | **880 B** | 959 B / **1,891 B** (over one packet) |
+| **B: compact crowd state** (chosen), 320 citizens just after an eruption (moods churning) | alive bit + 2-bit mood per citizen, standings, threats, feed on one district ghost; bodies as static ghosts | **8.5 B** | 71 B / 180 B |
+| B, 640 citizens, calm | same | **8 B** | 31 B / 63 B |
+
+- **Option A** would cost about 53 KB/s per client for 320 citizens before anything else happens. It can't fit the army, the rival and players in one packet. Lowering its send rate or using importance scaling only trades bandwidth for jerky, out-of-date positions.
+- **Option B** keeps what players must agree on exact: who is alive, where bodies are, each citizen's mood, standings. Clients animate local agents from it, so exact positions are cosmetic and only roughly match the server.
+- Bodies are `Static`-optimised ghosts, so each is sent once.
+
+## Frame time with the full crowd
+
+Windows development build, 1600×900, debris cap 1000. 10 response units fighting, the rival present, and the whole building collapsing. `-tolive-crowd N` respawns the crowd with N citizens first.
+
+```bash
+Builds/Windows/ToLive.exe -tolive-bench -tolive-cap 1000 -tolive-units 10 -tolive-crowd 640 -tolive-out bench-crowd.csv -screen-fullscreen 0 -screen-width 1600 -screen-height 900
+```
+
+| citizens | fight avg ms | collapse avg ms | fps | first-3 s median ms | p99 ms | worst ms |
+|---|---|---|---|---|---|---|
+| 10 | 2.54 | 2.81 | 356 | 2.65 | 5.99 | 18.9 |
+| 160 | 3.02 | 2.46 | 407 | 2.08 | 6.28 | 19.2 |
+| 320 | 2.34 | 2.77 | 361 | 2.41 | 6.10 | 19.1 |
+| 640 | 2.64 | 3.02 | 332 | 2.86 | 5.34 | 21.5 |
+
+**Chosen citizen count: 640.**
+- That's every baked home in the district.
+- Frame time is within run-to-run noise from 10 to 640 citizens, and the crowd's bandwidth stays at about 8 B per snapshot.
+- 320 looked sparse from the street (about one person every 20 m of sidewalk). 640 reads as a crowd.
+- The limit is the number of baked homes, not performance. More citizens need more homes, which the district generator would have to place.

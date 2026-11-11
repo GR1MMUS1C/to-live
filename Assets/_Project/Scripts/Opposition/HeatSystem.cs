@@ -73,14 +73,26 @@ namespace ToLive.Opposition
             {
                 var events = queue.ToNativeArray(Allocator.Temp);
                 queue.Clear();
+                // milestone 4: heat is dominance behaviour. A god's heat is scaled by how much the district
+                // fears rather than trusts them, so a trusted protector draws little or no army.
+                var hasDistrict = SystemAPI.TryGetSingletonEntity<ToLive.District.DistrictState>(out var districtEntity);
                 foreach (var ev in events)
                 {
-                    heat.Value = math.min(cfg.MaxHeat, heat.Value + ev.Amount);
+                    var amount = ev.Amount;
+                    if (hasDistrict && ev.God != Entity.Null)
+                    {
+                        float trust = 0f, fear = 0f;
+                        foreach (var s in em.GetBuffer<ToLive.District.GodStanding>(districtEntity, true))
+                            if (s.God == ev.God) { trust = s.Trust; fear = s.Fear; }
+                        var fearShare = (fear + 1f) / (trust + fear + 2f);
+                        amount *= math.lerp(cfg.TrustedHeatScale, 1f, math.saturate(fearShare * 2f)); // neutral or feared = full heat, trusted = TrustedHeatScale
+                    }
+                    heat.Value = math.min(cfg.MaxHeat, heat.Value + amount);
                     heat.LastRiseTick = tick;
                     if (ev.God != Entity.Null && em.Exists(ev.God) && em.HasComponent<HeatBlame>(ev.God))
                     {
                         var b = em.GetComponentData<HeatBlame>(ev.God);
-                        b.Amount += ev.Amount; b.LastTick = tick;
+                        b.Amount += amount; b.LastTick = tick;
                         em.SetComponentData(ev.God, b);
                     }
                 }
