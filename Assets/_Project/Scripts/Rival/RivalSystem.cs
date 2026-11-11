@@ -450,6 +450,52 @@ namespace ToLive.Rival
             var crisis = q.GetSingleton<ToLive.Crisis.CrisisState>();
             if (crisis.Phase != ToLive.Crisis.CrisisPhase.Active || crisis.RivalApproach == 0) return false;
             if (p.ExpelledUntilTick != 0 && CombatSystem.Before(tick, p.ExpelledUntilTick)) return false;
+            var crisisCfg = default(ToLive.Crisis.CrisisConfig);
+            using (var cq = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.Crisis.CrisisConfig>()))
+                if (cq.CalculateEntityCount() == 1) crisisCfg = cq.GetSingleton<ToLive.Crisis.CrisisConfig>();
+
+            // PROTECT an uprising against VANTA itself: stand down. Fly into the stand-down radius and stay
+            // there guarding (or idle): no beam, no attacks, even with a human attacking it (it only guards).
+            // This comes before the "human nearby" and "launched" checks so a guarded stagger keeps guarding.
+            if (crisis.Kind == ToLive.Crisis.CrisisKind.Uprising && crisis.RivalApproach == 1 && crisis.Target == self)
+            {
+                var radius = math.max(5f, (crisisCfg.StandDownRadius > 0f ? crisisCfg.StandDownRadius : 45f) - 8f); // small margin inside the radius
+                var spot = crisis.Position + new float3(0f, 6f, 0f);
+                var to = spot - pos; var d = math.length(to);
+                var stand = new PlayerInput { LookYaw = math.degrees(math.atan2(to.x, to.z)) };
+                if (math.distance(pos, crisis.Position) > radius)
+                {
+                    // get there (cruise when far); no guard while travelling
+                    stand.LookPitch = math.clamp(-math.degrees(math.asin(math.clamp(d > 0.01f ? to.y / d : 0f, -1f, 1f))), -70f, 70f);
+                    stand.Move = new float2(0, 1);
+                    if (d > 60f) stand.Thrust = 1f;
+                }
+                else
+                {
+                    // inside: hold still and guard; face the nearest human so the guard covers their attacks
+                    stand.GuardHeld = 1;
+                    using var hq = em.CreateEntityQuery(ComponentType.ReadOnly<CharacterKind>(), ComponentType.ReadOnly<LocalTransform>());
+                    using var hs = hq.ToEntityArray(Allocator.Temp);
+                    var nearest = float.MaxValue;
+                    foreach (var h in hs)
+                    {
+                        if (h == self || em.GetComponentData<CharacterKind>(h).Kind != CharacterKind.Human) continue;
+                        var hp = em.GetComponentData<LocalTransform>(h).Position;
+                        var hd = math.distance(hp, pos);
+                        if (hd < nearest && hd < 40f) { nearest = hd; stand.LookYaw = math.degrees(math.atan2(hp.x - pos.x, hp.z - pos.z)); }
+                    }
+                }
+                var unlock = c.LockTarget != Entity.Null && !CombatSystem.Before(tick, b.LockPressTick); // drop any lock-on; it is not an attack
+                if (unlock) b.LockPressTick = tick + CombatSystem.Ticks(0.3f, rate);
+                b.Act = RivalAct.Guard;
+                em.SetComponentData(self, b);
+                WriteInput(em, self, serverTick, stand, false, false, unlock, false);
+                return true;
+            }
+            // Protect approach but NOT the target of the uprising: fall through to normal behaviour.
+            // The calm rule (CrisisSystem.UpdateUprising) only reads the target, so nothing VANTA does near
+            // the rioters can defuse it.
+
             if (m.Carrying != Entity.Null || c.Action == CombatAction.Launched) return false;
             // a human right here: fight them (the contest) instead
             using (var gq = em.CreateEntityQuery(ComponentType.ReadOnly<CharacterKind>(), ComponentType.ReadOnly<LocalTransform>(), ComponentType.ReadOnly<CombatState>()))
@@ -496,6 +542,19 @@ namespace ToLive.Rival
             }
 
             // PROTECT
+            if (crisis.Kind == ToLive.Crisis.CrisisKind.Disaster && crisis.WarnChunk < 0)
+            {
+                // between failing chunks: wait beside the tower so the next one is in reach
+                var wait = crisis.Position + math.normalizesafe(new float3(pos.x - crisis.Position.x, 0, pos.z - crisis.Position.z), new float3(0, 0, 1)) * 16f;
+                var tw = wait - pos; var dw = math.length(tw);
+                inp.LookYaw = math.degrees(math.atan2(tw.x, tw.z));
+                inp.LookPitch = math.clamp(-math.degrees(math.asin(math.clamp(dw > 0.01f ? tw.y / dw : 0f, -1f, 1f))), -85f, 85f);
+                if (dw > 3f) { inp.Move = new float2(0, 1); if (dw > 40f) inp.Thrust = 1f; }
+                b.Act = RivalAct.Guard;
+                WriteInput(em, self, serverTick, inp, false, false, false, false);
+                em.SetComponentData(self, b);
+                return true;
+            }
             if (crisis.Kind == ToLive.Crisis.CrisisKind.Disaster && crisis.WarnChunk >= 0)
             {
                 using var gq = em.CreateEntityQuery(ComponentType.ReadOnly<BuildingGraph>());
@@ -505,9 +564,9 @@ namespace ToLive.Rival
                 var to = centre - pos; var d = math.length(to);
                 inp.LookYaw = math.degrees(math.atan2(to.x, to.z));
                 inp.LookPitch = math.clamp(-math.degrees(math.asin(math.clamp(d > 0.01f ? to.y / d : 0f, -1f, 1f))), -85f, 85f);
-                if (d > 4f) { inp.Move = new float2(0, 1); if (d > 60f) inp.Thrust = 1f; }
+                if (d > 4f) { inp.Move = new float2(0, 1); if (d > 25f) inp.Thrust = 1f; } // cruise when the chunk is far
                 // hold it up: guard next to it, after a human-like reaction delay
-                inp.GuardHeld = (byte)(d < 7f && tick - (crisis.WarnTick - CombatSystem.Ticks(2.5f, rate)) > CombatSystem.Ticks(preset.ReactionTime, rate) ? 1 : 0);
+                inp.GuardHeld = (byte)(d < 7f && tick - (crisis.WarnTick - CombatSystem.Ticks(crisisCfg.WarnTime > 0f ? crisisCfg.WarnTime : 2.5f, rate)) > CombatSystem.Ticks(preset.ReactionTime, rate) ? 1 : 0);
                 b.Act = RivalAct.Guard;
                 WriteInput(em, self, serverTick, inp, false, false, false, false);
                 em.SetComponentData(self, b);

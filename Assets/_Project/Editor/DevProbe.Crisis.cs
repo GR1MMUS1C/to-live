@@ -219,6 +219,49 @@ namespace ToLive.EditorTools
             return $"second human {second}";
         }
 
+        /// <summary>Add trust / fear to the rival's standing (tests).</summary>
+        public static string AddStandingRival(float trust, float fear)
+        {
+            var w = ServerWorld(); if (w == null) return "no server";
+            var em = w.EntityManager;
+            var r = em.CreateEntityQuery(ComponentType.ReadOnly<HeatState>()).GetSingleton<HeatState>().Rival;
+            if (r == Entity.Null) return "no rival";
+            DistrictSource.Add(em, r, trust, fear, Cause.Debug);
+            return "queued";
+        }
+
+        /// <summary>Clear every god's trust and fear (tests start from exact values).</summary>
+        public static string ResetStandings()
+        {
+            var w = ServerWorld(); if (w == null) return "no server";
+            var em = w.EntityManager;
+            using var q = em.CreateEntityQuery(ComponentType.ReadOnly<DistrictState>());
+            em.GetBuffer<GodStanding>(q.GetSingletonEntity()).Clear();
+            return "standings cleared";
+        }
+
+        /// <summary>Change the disaster warning time on the server at runtime (tests; the Inspector value is unchanged).</summary>
+        public static string SetWarnTime(float seconds)
+        {
+            var w = ServerWorld(); if (w == null) return "no server";
+            using var q = w.EntityManager.CreateEntityQuery(ComponentType.ReadWrite<CrisisConfig>());
+            var c = q.GetSingleton<CrisisConfig>();
+            c.WarnTime = seconds;
+            q.SetSingleton(c);
+            return $"WarnTime {seconds}";
+        }
+
+        /// <summary>Put the first human 6 m from the rival, facing it (to attack it with PlayCode).</summary>
+        public static string GoToRival()
+        {
+            var w = ServerWorld(); if (w == null) return "no server";
+            var em = w.EntityManager;
+            var r = em.CreateEntityQuery(ComponentType.ReadOnly<HeatState>()).GetSingleton<HeatState>().Rival;
+            var p = em.GetComponentData<LocalTransform>(r).Position;
+            Teleport(p.x, p.y, p.z - 6f, 0f);
+            return $"next to VANTA at {Fmt(p)}";
+        }
+
         /// <summary>Kill <paramref name="count"/> living rioters (uprising), blamed on the first human.</summary>
         public static string KillRioters(int count)
         {
