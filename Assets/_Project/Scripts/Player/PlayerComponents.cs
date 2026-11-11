@@ -28,6 +28,14 @@ namespace ToLive.Player
         public byte Boost;       // 1 while boost held
         public float LookYaw;    // camera yaw in degrees
         public float LookPitch;  // camera pitch in degrees (positive = looking down)
+
+        // Combat. InputEvent = a one-off press that is guaranteed to reach the server exactly once
+        // (Netcode's equivalent of a reliable "pressed" flag), even if a packet is lost.
+        public InputEvent Light;   // X / LMB
+        public InputEvent Dash;    // RB / Left Alt
+        public InputEvent LockOn;  // right stick click / Tab
+        public byte HeavyHeld;     // Y / RMB (hold to charge)
+        public byte GuardHeld;     // LB / Q
     }
 
     /// <summary>
@@ -65,6 +73,9 @@ namespace ToLive.Player
     public struct PlayerSpawner : IComponentData
     {
         public Entity PlayerPrefab;
+        public Entity DummyPrefab;
+        public Unity.Mathematics.float3 DummyHome;
+        public float DummyHomeYaw;
     }
 
     public struct PlayerSpawnPoint : IBufferElementData

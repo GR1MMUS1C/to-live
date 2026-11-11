@@ -49,6 +49,7 @@ namespace ToLive.EditorTools
             EnsureFolders();
             CreateMaterials();
             CreatePlayerPrefab();
+            CreateCombatPrefabs();
             GenerateDistrictScene();
             CreateMainScene();
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(MainScenePath, true) };
@@ -64,6 +65,7 @@ namespace ToLive.EditorTools
             EnsureFolders();
             CreateMaterials();
             if (AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath) == null) CreatePlayerPrefab();
+            CreateCombatPrefabs();
             GenerateDistrictScene();
             if (File.Exists(MainScenePath)) EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
             Debug.Log("[ToLive] District regenerated.");
@@ -95,7 +97,7 @@ namespace ToLive.EditorTools
         }
 
         static Material[] s_BuildingMats;
-        static Material s_GroundMat, s_OutskirtsMat, s_BodyMat, s_NoseMat;
+        static Material s_GroundMat, s_OutskirtsMat, s_BodyMat, s_NoseMat, s_InteriorMat, s_DebrisMat;
 
         static void CreateMaterials()
         {
@@ -103,6 +105,8 @@ namespace ToLive.EditorTools
             s_OutskirtsMat = GetOrCreateMaterial("M_Outskirts", new Color(0.36f, 0.40f, 0.33f), 0.05f);
             s_BodyMat = GetOrCreateMaterial("M_PlayerBody", Color.white, 0.4f);
             s_NoseMat = GetOrCreateMaterial("M_PlayerFront", new Color(1f, 0.92f, 0.2f), 0.5f);
+            s_InteriorMat = GetOrCreateMaterial("M_Interior", new Color(0.42f, 0.41f, 0.40f));
+            s_DebrisMat = GetOrCreateMaterial("M_Debris", new Color(0.55f, 0.54f, 0.52f));
             s_BuildingMats = new[]
             {
                 GetOrCreateMaterial("M_Building_A", new Color(0.62f, 0.62f, 0.64f)),
@@ -122,6 +126,7 @@ namespace ToLive.EditorTools
             ghost.SupportedGhostModes = GhostModeMask.All;
             ghost.HasOwner = true;
             ghost.SupportAutoCommandTarget = true;            // PlayerInput is routed automatically
+            ghost.TrackInterpolationDelay = true;             // lets the server rewind hit checks to what this player saw
 
             // Cosmetic pivot: leans the body forward into a "flying" pose at speed (client only).
             var pivot = new GameObject("Visual");
@@ -152,6 +157,91 @@ namespace ToLive.EditorTools
             Object.DestroyImmediate(root);
         }
 
+        // ---------- Combat / destruction prefabs ----------
+        const string DummyPrefabPath = PrefabsDir + "/TrainingDummy.prefab";
+        const string BuildingStatePrefabPath = PrefabsDir + "/BuildingState.prefab";
+        const string DebrisPrefabPath = PrefabsDir + "/Debris.prefab";
+
+        static void CreateCombatPrefabs()
+        {
+            if (s_BodyMat == null) CreateMaterials();
+
+            // Training dummy: server-simulated, interpolated on every client, no owner.
+            var root = new GameObject("TrainingDummy");
+            var ghost = root.AddComponent<GhostAuthoringComponent>();
+            ghost.DefaultGhostMode = GhostMode.Interpolated;
+            ghost.SupportedGhostModes = GhostModeMask.Interpolated;
+            ghost.HasOwner = false;
+            var pivot = new GameObject("Visual");
+            pivot.transform.SetParent(root.transform, false);
+            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            body.name = "Body";
+            Object.DestroyImmediate(body.GetComponent<Collider>());
+            body.transform.SetParent(pivot.transform, false);
+            body.transform.localScale = new Vector3(1.2f, 1.1f, 1.2f);
+            body.GetComponent<MeshRenderer>().sharedMaterial = s_BodyMat;
+            body.AddComponent<URPMaterialPropertyBaseColorAuthoring>().color = new Color(0.85f, 0.18f, 0.15f);
+            var nose = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            nose.name = "FrontMarker";
+            Object.DestroyImmediate(nose.GetComponent<Collider>());
+            nose.transform.SetParent(pivot.transform, false);
+            nose.transform.localPosition = new Vector3(0f, 0.35f, 0.6f);
+            nose.transform.localScale = new Vector3(0.3f, 0.2f, 0.6f);
+            nose.GetComponent<MeshRenderer>().sharedMaterial = s_NoseMat;
+            var dummy = root.AddComponent<ToLive.Combat.TrainingDummyAuthoring>();
+            dummy.Body = body;
+            dummy.VisualPivot = pivot;
+            PrefabUtility.SaveAsPrefabAsset(root, DummyPrefabPath);
+            Object.DestroyImmediate(root);
+
+            // Replicated building state (instanced once in the District as a pre-spawned ghost).
+            var state = new GameObject("BuildingState");
+            var sg = state.AddComponent<GhostAuthoringComponent>();
+            sg.DefaultGhostMode = GhostMode.Interpolated;
+            sg.SupportedGhostModes = GhostModeMask.Interpolated;
+            sg.OptimizationMode = GhostOptimizationMode.Static; // only sends when the mask changes
+            sg.HasOwner = false;
+            state.AddComponent<ToLive.Destruction.BuildingStateAuthoring>();
+            PrefabUtility.SaveAsPrefabAsset(state, BuildingStatePrefabPath);
+            Object.DestroyImmediate(state);
+
+            // Debris render prefab: a unit cube with no collider (physics is added at runtime).
+            var debris = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            debris.name = "Debris";
+            Object.DestroyImmediate(debris.GetComponent<Collider>());
+            debris.GetComponent<MeshRenderer>().sharedMaterial = s_DebrisMat;
+            debris.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            PrefabUtility.SaveAsPrefabAsset(debris, DebrisPrefabPath);
+            Object.DestroyImmediate(debris);
+        }
+
+        /// <summary>Replaces one mid-size building near player spawn 1 with a pre-fractured breakable one.</summary>
+        static ToLive.Destruction.BreakableBuildingAuthoring PlaceBreakableBuilding(System.Collections.Generic.List<GameObject> placed, Vector3 nearXZ)
+        {
+            GameObject pick = null;
+            var best = float.MaxValue;
+            foreach (var b in placed)
+            {
+                var s = b.transform.localScale;
+                if (s.y < 30f || s.y > 110f || Mathf.Min(s.x, s.z) < 18f) continue;
+                var d = Vector2.Distance(new Vector2(b.transform.position.x, b.transform.position.z), new Vector2(nearXZ.x, nearXZ.z));
+                if (d < best) { best = d; pick = b; }
+            }
+            if (pick == null) pick = placed[0];
+
+            var size = pick.transform.localScale;
+            size.y = Mathf.Clamp(size.y, 40f, 70f);
+            size.x = Mathf.Min(size.x, 30f);
+            size.z = Mathf.Min(size.z, 30f);
+            var center = new Vector3(pick.transform.position.x, size.y / 2f, pick.transform.position.z);
+            var parent = pick.transform.parent;
+            placed.Remove(pick);
+            Object.DestroyImmediate(pick);
+            var building = BreakableBuildingGenerator.Generate(center, size, parent, s_BuildingMats, s_InteriorMat, Seed);
+            Debug.Log($"[ToLive] Breakable building at {center} size {size}: {building.Chunks.Count} chunks");
+            return building;
+        }
+
         // ---------- Grey-box district subscene ----------
         public static void GenerateDistrictScene()
         {
@@ -177,6 +267,7 @@ namespace ToLive.EditorTools
             var rng = new System.Random(Seed);
             var blockSize = (DistrictSize - StreetWidth * (BlocksPerSide + 1)) / BlocksPerSide;
             var count = 0;
+            var placed = new System.Collections.Generic.List<GameObject>();
             for (var bx = 0; bx < BlocksPerSide; bx++)
             for (var bz = 0; bz < BlocksPerSide; bz++)
             {
@@ -202,6 +293,7 @@ namespace ToLive.EditorTools
                     b.transform.localScale = new Vector3(w, h, d);
                     b.GetComponent<MeshRenderer>().sharedMaterial = s_BuildingMats[rng.Next(s_BuildingMats.Length)];
                     b.isStatic = true;
+                    placed.Add(b);
                     count++;
                 }
             }
@@ -224,6 +316,27 @@ namespace ToLive.EditorTools
                 p.transform.SetParent(spawner.transform, false);
                 p.transform.position = spawnPositions[i];
             }
+
+            // One breakable building near spawn 1, and the training dummy hovering in front of it.
+            var breakable = PlaceBreakableBuilding(placed, spawnPositions[0]);
+            var bc = Vector3.zero;
+            foreach (var c in breakable.Chunks) bc += c.Center;
+            bc /= Mathf.Max(1, breakable.Chunks.Count);
+            var toSpawn = new Vector3(spawnPositions[0].x - bc.x, 0f, spawnPositions[0].z - bc.z).normalized;
+            var dummyHome = new GameObject("Dummy Home");
+            dummyHome.transform.SetParent(spawner.transform, false);
+            dummyHome.transform.position = new Vector3(bc.x, 0f, bc.z) + toSpawn * 30f + Vector3.up * 25f;
+            dummyHome.transform.rotation = Quaternion.LookRotation(toSpawn);
+            spawnerAuthoring.DummyPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DummyPrefabPath);
+            spawnerAuthoring.DummyHome = dummyHome.transform;
+
+            var stateInstance = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(BuildingStatePrefabPath), scene);
+            stateInstance.transform.position = new Vector3(bc.x, -5f, bc.z);
+
+            var combatConfig = new GameObject("Combat Config");
+            combatConfig.AddComponent<ToLive.Combat.CombatConfigAuthoring>();
+            var debrisConfig = new GameObject("Debris Config");
+            debrisConfig.AddComponent<ToLive.Destruction.DebrisConfigAuthoring>().DebrisPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DebrisPrefabPath);
 
             var flightConfig = new GameObject("Flight Config");
             flightConfig.AddComponent<FlightConfigAuthoring>();
@@ -294,6 +407,8 @@ namespace ToLive.EditorTools
             var doc = uiGo.AddComponent<UIDocument>();
             doc.panelSettings = GetOrCreatePanelSettings();
             var ui = uiGo.AddComponent<GameUI>();
+            uiGo.AddComponent<CombatHud>();
+            systems.AddComponent<PerfBenchmark>();
             ui.GameplayScene = subScene;
 
             EditorSceneManager.SaveScene(scene, MainScenePath);

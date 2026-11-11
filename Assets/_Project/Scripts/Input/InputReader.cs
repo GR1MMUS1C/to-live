@@ -23,7 +23,13 @@ namespace ToLive.Input
         public static bool MenuPressedThisFrame;
         public static bool UsingGamepad;
 
+        // Combat. Presses are counted until the ECS input system consumes them, so a press is never
+        // lost even if no simulation tick ran in that frame.
+        public static int LightPresses, DashPresses, LockOnPresses;
+        public static bool HeavyHeld, GuardHeld;
+
         InputAction m_Move, m_LookStick, m_LookDelta, m_Thrust, m_Ascend, m_Descend, m_Boost, m_Menu;
+        InputAction m_Light, m_Heavy, m_Dash, m_Guard, m_LockOn;
 
         void OnEnable()
         {
@@ -42,6 +48,11 @@ namespace ToLive.Input
             m_Descend = map.FindAction("Descend", true);
             m_Boost = map.FindAction("Boost", true);
             m_Menu = map.FindAction("Menu", true);
+            m_Light = map.FindAction("Light", true);
+            m_Heavy = map.FindAction("Heavy", true);
+            m_Dash = map.FindAction("Dash", true);
+            m_Guard = map.FindAction("Guard", true);
+            m_LockOn = map.FindAction("LockOn", true);
             map.Enable();
         }
 
@@ -59,6 +70,11 @@ namespace ToLive.Input
             Thrust = Mathf.Clamp01(m_Thrust.ReadValue<float>());
             Boost = m_Boost.IsPressed();
             MenuPressedThisFrame = m_Menu.WasPressedThisFrame();
+            if (m_Light.WasPressedThisFrame()) LightPresses++;
+            if (m_Dash.WasPressedThisFrame()) DashPresses++;
+            if (m_LockOn.WasPressedThisFrame()) LockOnPresses++;
+            HeavyHeld = m_Heavy.IsPressed();
+            GuardHeld = m_Guard.IsPressed();
             if (Gamepad.current != null && Gamepad.current.wasUpdatedThisFrame && Gamepad.current.leftStick.ReadValue().sqrMagnitude + Gamepad.current.rightStick.ReadValue().sqrMagnitude > 0.05f)
                 UsingGamepad = true;
             else if (Mouse.current != null && Mouse.current.delta.ReadValue().sqrMagnitude > 4f)

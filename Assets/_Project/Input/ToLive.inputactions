@@ -13,7 +13,12 @@
                 { "name": "Ascend", "type": "Value", "id": "a1c2e3f4-0005-4a5b-8c9d-000000000005", "expectedControlType": "Axis", "processors": "", "interactions": "", "initialStateCheck": true },
                 { "name": "Descend", "type": "Value", "id": "a1c2e3f4-0006-4a5b-8c9d-000000000006", "expectedControlType": "Axis", "processors": "", "interactions": "", "initialStateCheck": true },
                 { "name": "Boost", "type": "Button", "id": "a1c2e3f4-0007-4a5b-8c9d-000000000007", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
-                { "name": "Menu", "type": "Button", "id": "a1c2e3f4-0008-4a5b-8c9d-000000000008", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false }
+                { "name": "Menu", "type": "Button", "id": "a1c2e3f4-0008-4a5b-8c9d-000000000008", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "Light", "type": "Button", "id": "a1c2e3f4-0009-4a5b-8c9d-000000000009", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "Heavy", "type": "Button", "id": "a1c2e3f4-000a-4a5b-8c9d-00000000000a", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "Dash", "type": "Button", "id": "a1c2e3f4-000b-4a5b-8c9d-00000000000b", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "Guard", "type": "Button", "id": "a1c2e3f4-000c-4a5b-8c9d-00000000000c", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "LockOn", "type": "Button", "id": "a1c2e3f4-000d-4a5b-8c9d-00000000000d", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false }
             ],
             "bindings": [
                 { "name": "", "id": "b0000000-0000-4000-8000-000000000001", "path": "<Gamepad>/leftStick", "interactions": "", "processors": "StickDeadzone", "groups": "Gamepad", "action": "Move", "isComposite": false, "isPartOfComposite": false },
@@ -33,7 +38,17 @@
                 { "name": "", "id": "b0000000-0000-4000-8000-00000000000f", "path": "<Gamepad>/leftStickPress", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Boost", "isComposite": false, "isPartOfComposite": false },
                 { "name": "", "id": "b0000000-0000-4000-8000-000000000010", "path": "<Keyboard>/f", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Boost", "isComposite": false, "isPartOfComposite": false },
                 { "name": "", "id": "b0000000-0000-4000-8000-000000000011", "path": "<Gamepad>/start", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Menu", "isComposite": false, "isPartOfComposite": false },
-                { "name": "", "id": "b0000000-0000-4000-8000-000000000012", "path": "<Keyboard>/escape", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Menu", "isComposite": false, "isPartOfComposite": false }
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000012", "path": "<Keyboard>/escape", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Menu", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000013", "path": "<Gamepad>/buttonWest", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Light", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000014", "path": "<Mouse>/leftButton", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Light", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000015", "path": "<Gamepad>/buttonNorth", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Heavy", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000016", "path": "<Mouse>/rightButton", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Heavy", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000017", "path": "<Gamepad>/rightShoulder", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Dash", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000018", "path": "<Keyboard>/leftAlt", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Dash", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000019", "path": "<Gamepad>/leftShoulder", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Guard", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-00000000001a", "path": "<Keyboard>/q", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Guard", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-00000000001b", "path": "<Gamepad>/rightStickPress", "interactions": "", "processors": "", "groups": "Gamepad", "action": "LockOn", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-00000000001c", "path": "<Keyboard>/tab", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "LockOn", "isComposite": false, "isPartOfComposite": false }
             ]
         }
     ],

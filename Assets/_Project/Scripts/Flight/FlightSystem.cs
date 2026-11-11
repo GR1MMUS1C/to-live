@@ -1,3 +1,5 @@
+using ToLive.Combat;
+using ToLive.Destruction;
 using ToLive.Player;
 using Unity.Burst;
 using Unity.Collections;
@@ -33,36 +35,101 @@ namespace ToLive.Flight
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<FlightConfig>();
+            state.RequireForUpdate<NetworkTime>();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
+            state.CompleteDependency(); // main-thread lookups (input, chunks)
             var cfg = SystemAPI.GetSingleton<FlightConfig>();
+            var hasCombatCfg = SystemAPI.TryGetSingleton<CombatConfig>(out var combatCfg);
             var dt = SystemAPI.Time.DeltaTime;
             if (dt <= 0f) return;
+            var net = SystemAPI.GetSingleton<NetworkTime>();
+            var tick = net.ServerTick.IsValid ? net.ServerTick.TickIndexForValidTick : 0u;
+            var isServer = state.WorldUnmanaged.IsServer();
+            var rate = SystemAPI.TryGetSingleton<ClientServerTickRate>(out var tickRate) && tickRate.SimulationTickRate > 0 ? tickRate.SimulationTickRate : 60;
 
             var hasPhysics = SystemAPI.TryGetSingleton<PhysicsWorldSingleton>(out var physics);
             var hits = new NativeList<DistanceHit>(8, Allocator.Temp);
+            var chunks = SystemAPI.GetComponentLookup<BuildingChunk>(true);
+            var inputs = SystemAPI.GetComponentLookup<PlayerInput>(true);
+            var broken = new NativeList<BreakRequest>(4, Allocator.Temp);
 
             // WithAll<Simulate>: Netcode enables Simulate only on ghosts this world should simulate
             // this tick (all of them on the server, just your own player on a client).
-            foreach (var (input, flight, transform) in
-                     SystemAPI.Query<RefRO<PlayerInput>, RefRW<FlightState>, RefRW<LocalTransform>>().WithAll<Simulate>())
+            foreach (var (flight, combat, transform, entity) in
+                     SystemAPI.Query<RefRW<FlightState>, RefRW<CombatState>, RefRW<LocalTransform>>().WithAll<Simulate>().WithEntityAccess())
             {
                 var s = flight.ValueRO;
+                var c = combat.ValueRO;
                 var pos = transform.ValueRO.Position;
-                Step(ref s, input.ValueRO, cfg, dt);
+
+                // Hit-stop: freeze in place for a few ticks on impact.
+                if (CombatSystem.Before(tick, c.HitStopUntilTick)) continue;
+
+                var input = inputs.HasComponent(entity) ? inputs[entity] : new PlayerInput { LookYaw = s.Yaw };
+                var launched = c.Action == CombatAction.Launched || c.Action == CombatAction.KnockedOut;
+                switch (c.Action)
+                {
+                    case CombatAction.Launched:
+                    case CombatAction.KnockedOut:
+                        // Reduced control: the body is a projectile (ballistic for launchers).
+                        if (c.Ballistic == 1) s.Velocity.y -= combatCfg.LaunchGravity * dt;
+                        s.Velocity *= math.exp(-(c.Ballistic == 2 ? combatCfg.AttackDamping : combatCfg.LaunchDrag) * dt);
+                        s.Gear = FlightGear.Hover;
+                        break;
+                    case CombatAction.Dash:
+                        break; // velocity set by CombatSystem
+                    case CombatAction.Light:
+                    case CombatAction.HeavyStrike:
+                    case CombatAction.HeavyCharge:
+                        s.Velocity *= math.exp(-combatCfg.AttackDamping * dt);
+                        s.Gear = FlightGear.Hover;
+                        break;
+                    default:
+                        Step(ref s, input, cfg, dt);
+                        break;
+                }
+
+                // Can this body smash through building chunks right now?
+                var speed = math.length(s.Velocity);
+                var canBreak = hasCombatCfg && ((launched && speed >= combatCfg.BreakSpeed) || speed >= combatCfg.FlyingBreakSpeed);
+                var damage = 0f;
 
                 if (hasPhysics)
-                    pos = MoveAndSlide(physics, pos, ref s.Velocity, cfg, dt, ref hits);
+                    pos = MoveAndSlide(physics, pos, ref s.Velocity, cfg, combatCfg, dt, ref hits, chunks, canBreak, launched, ref broken, ref damage);
                 else
                     pos += s.Velocity * dt;
+
+                if (damage > 0f && c.Action != CombatAction.KnockedOut)
+                {
+                    c.Power = math.max(0f, c.Power - damage);
+                    if (c.Power <= 0f)
+                    {
+                        // Same knock-out transition as a strike (CombatSystem.ApplyHits). It runs in the
+                        // predicted loop on client and server alike, from the same predicted inputs.
+                        c.Action = CombatAction.KnockedOut;
+                        c.ActionEndTick = tick + CombatSystem.Ticks(combatCfg.RespawnDelay, rate);
+                        c.Ballistic = 1;
+                        c.LockTarget = Entity.Null;
+                        c.ComboStep = 0; c.QueuedLight = 0; c.Charge = 0f;
+                    }
+                    combat.ValueRW = c;
+                }
 
                 s.Supersonic = (byte)(math.length(s.Velocity) >= cfg.SupersonicSpeed ? 1 : 0);
                 flight.ValueRW = s;
                 transform.ValueRW.Position = pos;
                 transform.ValueRW.Rotation = quaternion.EulerZXY(math.radians(new float3(s.Pitch, s.Yaw, s.Bank)));
+            }
+
+            // Only the server decides what breaks. It queues the chunks for BreakSystem.
+            if (isServer && broken.Length > 0 && SystemAPI.TryGetSingletonEntity<BuildingGraph>(out var graph))
+            {
+                var queue = SystemAPI.GetBuffer<BreakRequest>(graph);
+                queue.AddRange(broken.AsArray());
             }
         }
 
@@ -130,10 +197,15 @@ namespace ToLive.Flight
 
         /// <summary>
         /// Sweep a sphere along the motion and slide along whatever we hit (walls, roofs, ground).
-        /// Velocity into a surface is removed, so you can graze along buildings. No damage.
+        /// Velocity into a surface is removed, so you can graze along buildings.
+        /// When <paramref name="canBreak"/> is true, breakable building chunks are smashed instead:
+        /// the body passes through, loses some speed and takes a little damage. This runs the same
+        /// way on client and server, so prediction agrees; only the server turns it into real breaks.
         /// </summary>
         static float3 MoveAndSlide(in PhysicsWorldSingleton physics, float3 pos, ref float3 velocity,
-            in FlightConfig cfg, float dt, ref NativeList<DistanceHit> hits)
+            in FlightConfig cfg, in CombatConfig combatCfg, float dt, ref NativeList<DistanceHit> hits,
+            ComponentLookup<BuildingChunk> chunks, bool canBreak, bool launched,
+            ref NativeList<BreakRequest> broken, ref float damage)
         {
             var filter = CollisionFilter.Default;
             var radius = cfg.CollisionRadius;
@@ -146,24 +218,40 @@ namespace ToLive.Flight
                 for (var i = 0; i < hits.Length; i++)
                 {
                     var h = hits[i];
-                    if (h.Distance < 0f)
-                        pos += h.SurfaceNormal * (-h.Distance + skin);
+                    if (h.Distance >= 0f) continue;
+                    if (canBreak && chunks.HasComponent(h.Entity)) continue; // we're smashing through it
+                    pos += h.SurfaceNormal * (-h.Distance + skin);
                 }
             }
 
-            // 2) Sweep and slide, up to 4 contacts per tick.
+            // 2) Sweep and slide, up to 6 contacts per tick (chunks smashed don't stop us).
+            var collector = new IgnoreListClosestHitCollector(1f);
             var delta = velocity * dt;
-            for (var iteration = 0; iteration < 4; iteration++)
+            for (var iteration = 0; iteration < 6; iteration++)
             {
                 var len = math.length(delta);
                 if (len < 1e-5f) break;
                 var dir = delta / len;
 
-                if (!physics.SphereCast(pos, radius, dir, len + skin, out var hit, filter) ||
-                    math.dot(hit.SurfaceNormal, dir) >= 0f)
+                collector.Reset(1f);
+                if (!physics.SphereCastCustom(pos, radius, dir, len + skin, ref collector, filter) ||
+                    math.dot(collector.Hit.SurfaceNormal, dir) >= 0f)
                 {
                     pos += delta;
                     break;
+                }
+                var hit = collector.Hit;
+
+                if (canBreak && chunks.HasComponent(hit.Entity))
+                {
+                    // Smash: keep going through the chunk, a bit slower.
+                    collector.Ignore(hit.Entity);
+                    broken.Add(new BreakRequest { Chunk = chunks[hit.Entity].Index, Velocity = velocity });
+                    var keep = 1f - combatCfg.ChunkSpeedLoss;
+                    velocity *= keep;
+                    delta *= keep;
+                    damage += combatCfg.ChunkImpactDamage;
+                    continue;
                 }
 
                 var travel = math.max(hit.Fraction * (len + skin) - skin, 0f);
@@ -173,9 +261,55 @@ namespace ToLive.Flight
                 var remaining = dir * (len - travel);
                 delta = remaining - n * math.dot(remaining, n);
                 var into = math.dot(velocity, n);
-                if (into < 0f) velocity -= n * into;
+                if (into < 0f)
+                {
+                    // A launched body slamming into unbreakable walls/ground gets hurt.
+                    if (launched && -into > combatCfg.WallImpactSpeed)
+                        damage += (-into - combatCfg.WallImpactSpeed) * combatCfg.WallImpactDamagePerMs;
+                    velocity -= n * into;
+                }
             }
             return pos;
+        }
+
+        /// <summary>Closest-hit collector that skips chunks we already smashed this step.</summary>
+        struct IgnoreListClosestHitCollector : ICollector<ColliderCastHit>
+        {
+            FixedList128Bytes<Entity> m_Ignored;
+            public ColliderCastHit Hit;
+            public bool EarlyOutOnFirstHit => false;
+            public float MaxFraction { get; private set; }
+            public int NumHits { get; private set; }
+
+            public IgnoreListClosestHitCollector(float maxFraction)
+            {
+                m_Ignored = default;
+                Hit = default;
+                MaxFraction = maxFraction;
+                NumHits = 0;
+            }
+
+            public void Reset(float maxFraction)
+            {
+                MaxFraction = maxFraction;
+                NumHits = 0;
+                Hit = default;
+            }
+
+            public void Ignore(Entity e)
+            {
+                if (m_Ignored.Length < m_Ignored.Capacity) m_Ignored.Add(e);
+            }
+
+            public bool AddHit(ColliderCastHit hit)
+            {
+                for (var i = 0; i < m_Ignored.Length; i++)
+                    if (m_Ignored[i] == hit.Entity) return false;
+                MaxFraction = hit.Fraction;
+                Hit = hit;
+                NumHits = 1;
+                return true;
+            }
         }
 
         static float3 MoveTowards(float3 current, float3 target, float maxDelta)

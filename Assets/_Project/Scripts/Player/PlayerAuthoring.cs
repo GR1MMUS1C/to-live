@@ -25,6 +25,10 @@ namespace ToLive.Player
                 AddComponent<PlayerInput>(entity);
                 AddComponent<FlightState>(entity);
                 AddComponent<SupersonicFxState>(entity);
+                AddComponent(entity, new ToLive.Combat.CombatState { Power = 100f });
+                AddComponent<ToLive.Combat.CombatTarget>(entity);
+                AddBuffer<ToLive.Combat.PositionHistory>(entity);
+                AddComponent<ToLive.Combat.HitFxState>(entity);
                 AddComponent(entity, new PlayerVisual
                 {
                     Body = authoring.Body != null ? GetEntity(authoring.Body, TransformUsageFlags.Dynamic) : Entity.Null,

@@ -47,6 +47,15 @@ namespace ToLive.CameraRig
         [Tooltip("Upper limit on Cinemachine follow damping (seconds), used at low speed.")] public float MaxDamping = 0.12f;
         [Tooltip("Pivot offset from the player (up, in metres).")] public float PivotHeight = 1.2f;
 
+        [Header("Lock-on framing")]
+        [Tooltip("How fast the camera swings to frame the lock target (per second).")] public float LockTurnSpeed = 6f;
+        [Tooltip("Extra pitch (down) while locked, so you see both characters.")] public float LockPitchOffset = 8f;
+        [Tooltip("Extra camera distance per metre between you and the target.")] public float LockDistanceFactor = 0.3f;
+        public float LockMaxExtraDistance = 10f;
+
+        [Header("Impact shake")]
+        [Tooltip("How fast camera shake fades (metres per second).")] public float ShakeDecay = 2.5f;
+
         [Header("Collision")]
         public float CameraRadius = 0.35f;
         public float MinDistance = 1.5f;
@@ -60,6 +69,13 @@ namespace ToLive.CameraRig
         public static float LocalSpeed { get; private set; }
         public static byte LocalGear { get; private set; }
         public static bool HasLocalPlayer { get; private set; }
+        public static bool HasLockTarget { get; private set; }
+        public static float3 LockTargetPosition { get; private set; }
+        public static float LockTargetPower;
+        public static float LocalPower { get; private set; }
+        public static byte LocalAction { get; private set; }
+        public static float LocalCharge { get; private set; }
+        public static uint LocalKoEndTick { get; private set; }
 
         void Awake()
         {
@@ -95,12 +111,41 @@ namespace ToLive.CameraRig
             var t = SpeedCurve.Evaluate(Mathf.Clamp01(LocalSpeed / Mathf.Max(FullEffectSpeed, 1f)));
             m_SpeedT = Mathf.Lerp(m_SpeedT, t, 1f - Mathf.Exp(-Responsiveness * dt));
 
-            var rotation = Quaternion.Euler(Pitch, Yaw, 0f);
             var pivot = (Vector3)playerPos + Vector3.up * PivotHeight;
+
+            // Soft lock-on: steer the orbit so the camera frames you and the target (you can still nudge it).
+            var lockExtra = 0f;
+            HasLockTarget = TryGetLockTarget(out var lockPos, out LockTargetPower);
+            if (HasLockTarget)
+            {
+                var focus = Vector3.Lerp(pivot, (Vector3)lockPos, 0.5f);
+                var toFocus = focus - pivot;
+                var sep = Vector3.Distance(pivot, lockPos);
+                if (toFocus.sqrMagnitude > 0.01f)
+                {
+                    var look = Quaternion.LookRotation(((Vector3)lockPos - pivot).normalized);
+                    var e = look.eulerAngles;
+                    var wantPitch = Mathf.Clamp(Mathf.DeltaAngle(0f, e.x) + LockPitchOffset, MinPitch, MaxPitch);
+                    var k = 1f - Mathf.Exp(-LockTurnSpeed * dt);
+                    Yaw = Mathf.Repeat(Mathf.LerpAngle(Yaw, e.y, k) + 180f, 360f) - 180f;
+                    Pitch = Mathf.Lerp(Pitch, wantPitch, k);
+                }
+                lockExtra = Mathf.Min(sep * LockDistanceFactor, LockMaxExtraDistance);
+            }
+            LockTargetPosition = lockPos;
+
+            var rotation = Quaternion.Euler(Pitch, Yaw, 0f);
+            // Camera shake on impacts (decays quickly).
+            var shake = ToLive.Combat.CombatFx.Shake;
+            if (shake > 0.001f)
+            {
+                pivot += (Vector3)UnityEngine.Random.insideUnitSphere * shake;
+                ToLive.Combat.CombatFx.Shake = Mathf.MoveTowards(shake, 0f, ShakeDecay * dt);
+            }
             Target.SetPositionAndRotation(pivot, rotation);
 
             // Desired arm length, shortened by collision against the city.
-            var desired = Mathf.Lerp(HoverDistance, BoostDistance, m_SpeedT);
+            var desired = Mathf.Lerp(HoverDistance, BoostDistance, m_SpeedT) + lockExtra;
             var allowed = desired;
             if (TryGetPhysics(out var physics) &&
                 physics.SphereCast(pivot, CameraRadius, -(rotation * Vector3.forward), desired, out var hit, CollisionFilter.Default))
@@ -155,6 +200,30 @@ namespace ToLive.CameraRig
             var flight = em.GetComponentData<FlightState>(entity);
             velocity = flight.Velocity;
             gear = flight.Gear;
+            m_LocalEntity = entity;
+            if (em.HasComponent<ToLive.Combat.CombatState>(entity))
+            {
+                var c = em.GetComponentData<ToLive.Combat.CombatState>(entity);
+                LocalPower = c.Power;
+                LocalAction = c.Action;
+                LocalCharge = c.Charge;
+                LocalKoEndTick = c.ActionEndTick;
+            }
+            return true;
+        }
+
+        Entity m_LocalEntity;
+
+        bool TryGetLockTarget(out float3 position, out float power)
+        {
+            position = default; power = 0f;
+            if (m_World == null || !m_World.IsCreated) return false;
+            var em = m_World.EntityManager;
+            if (!em.Exists(m_LocalEntity) || !em.HasComponent<ToLive.Combat.CombatState>(m_LocalEntity)) return false;
+            var target = em.GetComponentData<ToLive.Combat.CombatState>(m_LocalEntity).LockTarget;
+            if (target == Entity.Null || !em.Exists(target) || !em.HasComponent<LocalToWorld>(target)) return false;
+            position = em.GetComponentData<LocalToWorld>(target).Position;
+            if (em.HasComponent<ToLive.Combat.CombatState>(target)) power = em.GetComponentData<ToLive.Combat.CombatState>(target).Power;
             return true;
         }
 
