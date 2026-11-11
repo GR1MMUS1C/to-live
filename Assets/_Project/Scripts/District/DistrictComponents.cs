@@ -27,6 +27,14 @@ namespace ToLive.District
         public const byte EruptionNearCrowd = 6;// +fear -trust
         public const byte RecklessPass = 7;     // -trust +fear: supersonic over a crowd
         public const byte Debug = 8;
+        // milestone 4B
+        public const byte CrisisProtected = 9;
+        public const byte CrisisDominated = 10;
+        public const byte CrisisFailed = 11;
+        public const byte HeldChunk = 12;       // +trust: held up a failing chunk
+        public const byte Uprising = 13;        // -fear: people defy you
+        public const byte Defeated = 14;        // drained: lost influence here
+        public const byte Victory = 15;         // took influence from a beaten god
 
         public static string Text(byte kind, int value) => kind switch
         {
@@ -38,6 +46,13 @@ namespace ToLive.District
             EruptionNearCrowd => "+fear: eruption near a crowd",
             RecklessPass => "-trust: reckless supersonic pass over people",
             Debug => "debug",
+            CrisisProtected => "+trust: crisis resolved by protecting people",
+            CrisisDominated => "+fear: crisis ended by force",
+            CrisisFailed => "-standing: the crisis was lost",
+            HeldChunk => "+trust: held up the failing tower",
+            Uprising => "-fear: the people defy you",
+            Defeated => value == 0 ? "DRAINED: you lost influence here" : $"DRAINED: lost {value} influence",
+            Victory => value == 0 ? "+influence: you beat a god here" : $"+{value} influence: you beat a god here",
             _ => "",
         };
     }
@@ -98,6 +113,7 @@ namespace ToLive.District
     public struct CitizenBody : IComponentData
     {
         [GhostField] public ushort Index;
+        public uint DeathTick;  // server: when they died (trusted districts clear bodies after a while)
     }
 
     /// <summary>Baked street positions where citizens live (identical in every world, no bandwidth).</summary>
@@ -130,6 +146,8 @@ namespace ToLive.District
         public uint NextThinkTick;
         public float3 FleeFrom;
         public Entity Focus;        // the god they gather around
+        public byte Riot;           // milestone 4B: part of an uprising (gathers at RiotPoint, defiant)
+        public float3 RiotPoint;
     }
 
     /// <summary>Tag on the server singleton holding <see cref="CitizenSim"/>, <see cref="CrowdHazard"/> and <see cref="DistrictEvent"/> queues.</summary>
@@ -146,6 +164,7 @@ namespace ToLive.District
         public const byte Scare = 0;     // violence nearby: people flee (no deaths)
         public const byte Kill = 1;      // kills inside Radius, scares inside ScareRadius
         public const byte Segment = 2;   // a beam from Position to End
+        public const byte Pin = 3;       // milestone 4B: freezes people in ScareRadius (a ritual building up)
     }
 
     /// <summary>
@@ -197,6 +216,8 @@ namespace ToLive.District
         public static void Add(EntityManager em, Entity god, float trust, float fear, byte cause, int count = 1)
         {
             if (!IsGod(em, god) || !TryQueue(em, out var q, out _)) return;
+            if (IsExpelled(em, god)) { trust = math.min(trust, 0f); fear = math.min(fear, 0f); } // drained gods gain nothing until they return
+            if (trust == 0f && fear == 0f) return;
             q.Add(new DistrictEvent { God = god, Trust = trust, Fear = fear, Cause = cause, Count = count });
         }
 
@@ -205,15 +226,29 @@ namespace ToLive.District
         {
             var god = ToLive.Opposition.HeatSource.Responsible(em, responsible);
             if (!IsGod(em, god) || !TryQueue(em, out var q, out var cfg)) return;
-            q.Add(new DistrictEvent { God = god, Trust = -cfg.TrustLostPerDeath * count, Fear = cfg.FearPerDeath * count, Cause = Cause.CiviliansKilled, Count = count });
+            q.Add(new DistrictEvent { God = god, Trust = -cfg.TrustLostPerDeath * count, Fear = IsExpelled(em, god) ? 0f : cfg.FearPerDeath * count, Cause = Cause.CiviliansKilled, Count = count });
             ToLive.Opposition.HeatSource.CiviliansKilled(em, god, count);
+            ToLive.Crisis.CrisisTallies.Record(em, god, deaths: count);
         }
 
         public static void Destruction(EntityManager em, Entity responsible, int chunks)
         {
             var god = ToLive.Opposition.HeatSource.Responsible(em, responsible);
             if (!IsGod(em, god) || !TryQueue(em, out var q, out var cfg)) return;
-            q.Add(new DistrictEvent { God = god, Trust = -cfg.TrustLostPerChunk * chunks, Fear = cfg.FearPerChunk * chunks, Cause = Cause.Destruction, Count = chunks });
+            q.Add(new DistrictEvent { God = god, Trust = -cfg.TrustLostPerChunk * chunks, Fear = IsExpelled(em, god) ? 0f : cfg.FearPerChunk * chunks, Cause = Cause.Destruction, Count = chunks });
+            ToLive.Crisis.CrisisTallies.Record(em, god, chunks: chunks);
+        }
+
+        /// <summary>Drained and expelled (milestone 4B): locked out of gaining standing until the lockout ends.</summary>
+        public static bool IsExpelled(EntityManager em, Entity god)
+        {
+            if (!em.HasComponent<ToLive.Power.PowerState>(god)) return false;
+            var until = em.GetComponentData<ToLive.Power.PowerState>(god).ExpelledUntilTick;
+            if (until == 0) return false;
+            using var tq = em.CreateEntityQuery(ComponentType.ReadOnly<NetworkTime>());
+            if (tq.CalculateEntityCount() != 1) return false;
+            var nt = tq.GetSingleton<NetworkTime>();
+            return nt.ServerTick.IsValid && ToLive.Combat.CombatSystem.Before(nt.ServerTick.TickIndexForValidTick, until);
         }
     }
 

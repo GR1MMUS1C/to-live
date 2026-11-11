@@ -48,6 +48,9 @@ namespace ToLive.Destruction
 
         public void SetBroken(int i) => Set(i >> 5, Get(i >> 5) | (1u << (i & 31)));
 
+        /// <summary>Restore one chunk (milestone 4B: trusted districts rebuild chunk by chunk).</summary>
+        public void ClearBroken(int i) => Set(i >> 5, Get(i >> 5) & ~(1u << (i & 31)));
+
         public int CountBroken() => math.countbits(Broken0) + math.countbits(Broken1) + math.countbits(Broken2) + math.countbits(Broken3);
 
         public uint Get(int word) => word switch { 0 => Broken0, 1 => Broken1, 2 => Broken2, _ => Broken3 };

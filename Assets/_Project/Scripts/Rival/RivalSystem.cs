@@ -164,6 +164,10 @@ namespace ToLive.Rival
         {
             var em = state.EntityManager;
             var pos = SpawnPosition(ref state, cfg);
+            // milestone 4B: a beaten rival comes back at the district edge (drained and expelled)
+            using (var cq = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.Crisis.CrisisConfig>()))
+                if (cq.CalculateEntityCount() == 1)
+                    pos = ToLive.Crisis.DefeatSystem.EdgePoint(em.GetComponentData<LocalTransform>(self).Position, cq.GetSingleton<ToLive.Crisis.CrisisConfig>().ExpelDistance);
             var yaw = math.degrees(math.atan2(-pos.x, -pos.z));
             var c = em.GetComponentData<CombatState>(self);
             var f = em.GetComponentData<FlightState>(self);
@@ -207,7 +211,27 @@ namespace ToLive.Rival
                 return;
             }
 
+            // ---- leash: never wander far out of the district (flying back like a player would) ----
+            if (math.length(pos.xz) > 450f || pos.y > 420f)
+            {
+                var home = new float3(0f, 120f, 0f) - pos;
+                var hl = math.length(home);
+                var back = new PlayerInput { LookYaw = math.degrees(math.atan2(home.x, home.z)), LookPitch = math.clamp(-math.degrees(math.asin(math.clamp(home.y / math.max(1f, hl), -1f, 1f))), -70f, 70f), Thrust = 1f, Boost = (byte)(hl > 300f ? 1 : 0) };
+                b.Act = RivalAct.Approach;
+                em.SetComponentData(self, b);
+                WriteInput(em, self, serverTick, back, false, false, false, false);
+                return;
+            }
+
+            // ---- milestone 4B: crises. VANTA takes the opposite approach to the leading player ----
+            if (CrisisPlan(ref state, self, pos, f, c, p, m, ref b, tick, rate, serverTick, preset, out var crisisFoe)) return;
+
             var foe = PickFoe(ref state, self, pos, cfg, out var found);
+            if (crisisFoe != Entity.Null && em.Exists(crisisFoe))
+            {
+                foe = new Foe { Entity = crisisFoe, Position = em.GetComponentData<LocalTransform>(crisisFoe).Position, Velocity = em.GetComponentData<FlightState>(crisisFoe).Velocity, Combat = em.GetComponentData<CombatState>(crisisFoe), IsUnit = true };
+                found = true;
+            }
             if (!found)
             {
                 // nobody to fight: drift toward the district centre and hover
@@ -409,6 +433,101 @@ namespace ToLive.Rival
             em.SetComponentData(self, b);
             WriteInput(em, self, serverTick, inp, pressLight, pressDash, pressLock, pressGrab);
         }
+
+        /// <summary>
+        /// Crisis behaviour. Force: fly to the crisis and beam it (the tower, or the crowd). Protect: hold up
+        /// the failing chunk (guard next to it) or fight the attackers. Returns true when it wrote the input
+        /// itself; crisisFoe asks the normal fight logic to target an attacker instead.
+        /// A human close by takes priority (the contest).
+        /// </summary>
+        static bool CrisisPlan(ref SystemState state, Entity self, float3 pos, in FlightState f, in CombatState c, in PowerState p, in MoveState m,
+            ref RivalBrain b, uint tick, int rate, NetworkTick serverTick, in RivalPreset preset, out Entity crisisFoe)
+        {
+            crisisFoe = Entity.Null;
+            var em = state.EntityManager;
+            using var q = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.Crisis.CrisisState>());
+            if (q.CalculateEntityCount() != 1) return false;
+            var crisis = q.GetSingleton<ToLive.Crisis.CrisisState>();
+            if (crisis.Phase != ToLive.Crisis.CrisisPhase.Active || crisis.RivalApproach == 0) return false;
+            if (p.ExpelledUntilTick != 0 && CombatSystem.Before(tick, p.ExpelledUntilTick)) return false;
+            if (m.Carrying != Entity.Null || c.Action == CombatAction.Launched) return false;
+            // a human right here: fight them (the contest) instead
+            using (var gq = em.CreateEntityQuery(ComponentType.ReadOnly<CharacterKind>(), ComponentType.ReadOnly<LocalTransform>(), ComponentType.ReadOnly<CombatState>()))
+            using (var gods = gq.ToEntityArray(Allocator.Temp))
+                foreach (var g in gods)
+                    if (g != self && em.GetComponentData<CharacterKind>(g).Kind == CharacterKind.Human &&
+                        em.GetComponentData<CombatState>(g).Action != CombatAction.KnockedOut &&
+                        math.distance(em.GetComponentData<LocalTransform>(g).Position, pos) < 25f) return false;
+
+            var inp = new PlayerInput { LookYaw = f.Yaw };
+            var goal = crisis.Position;
+            if (crisis.Kind == ToLive.Crisis.CrisisKind.Disaster) goal.y = 4f; // force: cut the tower's base so it comes down
+            if (crisis.RivalApproach == 2)
+            {
+                // FORCE: get within beam range of the crisis, aim at it, fire
+                var stand = goal + math.normalizesafe(new float3(pos.x - goal.x, 0, pos.z - goal.z), new float3(1, 0, 0)) * 35f + new float3(0, 18f, 0);
+                var to = stand - pos; var d = math.length(to);
+                var aim = math.normalizesafe(goal - pos);
+                inp.LookYaw = math.degrees(math.atan2(aim.x, aim.z)) + b.AimNoise.x;
+                inp.LookPitch = math.clamp(-math.degrees(math.asin(math.clamp(aim.y, -1f, 1f))) + b.AimNoise.y, -85f, 85f);
+                if (d > 12f)
+                {
+                    // fly toward the stand-off point (movement is relative to the look direction)
+                    var look = quaternion.EulerZXY(math.radians(new float3(inp.LookPitch, inp.LookYaw, 0f)));
+                    var local = math.mul(math.inverse(look), math.normalizesafe(to));
+                    inp.Move = math.normalizesafe(new float2(local.x, local.z));
+                    inp.Vertical = math.clamp(local.y * 2f, -1f, 1f);
+                    if (d > 80f)
+                    {
+                        inp.Thrust = 1f; inp.Move = float2.zero;
+                        inp.LookYaw = math.degrees(math.atan2(to.x, to.z));
+                        inp.LookPitch = math.clamp(-math.degrees(math.asin(math.clamp(to.y / d, -1f, 1f))), -60f, 60f);
+                    }
+                }
+                // fire until nearly empty, then rest until mostly recharged (energy only regenerates while not firing)
+                if (p.BeamEnergy < 0.08f) b.BeamResting = 1; else if (p.BeamEnergy > 0.8f) b.BeamResting = 0;
+                inp.BeamHeld = (byte)(d < 40f && b.BeamResting == 0 ? 1 : 0);
+                b.Act = RivalAct.Beam;
+                var unlock = c.LockTarget != Entity.Null && !CombatSystem.Before(tick, b.LockPressTick);
+                if (unlock) b.LockPressTick = tick + CombatSystem.Ticks(0.3f, rate);
+                WriteInput(em, self, serverTick, inp, false, false, unlock, false);
+                em.SetComponentData(self, b);
+                return true;
+            }
+
+            // PROTECT
+            if (crisis.Kind == ToLive.Crisis.CrisisKind.Disaster && crisis.WarnChunk >= 0)
+            {
+                using var gq = em.CreateEntityQuery(ComponentType.ReadOnly<BuildingGraph>());
+                if (gq.CalculateEntityCount() != 1) return false;
+                var nodes = em.GetBuffer<ChunkNode>(gq.GetSingletonEntity(), true);
+                var centre = nodes[crisis.WarnChunk].Center;
+                var to = centre - pos; var d = math.length(to);
+                inp.LookYaw = math.degrees(math.atan2(to.x, to.z));
+                inp.LookPitch = math.clamp(-math.degrees(math.asin(math.clamp(d > 0.01f ? to.y / d : 0f, -1f, 1f))), -85f, 85f);
+                if (d > 4f) { inp.Move = new float2(0, 1); if (d > 60f) inp.Thrust = 1f; }
+                // hold it up: guard next to it, after a human-like reaction delay
+                inp.GuardHeld = (byte)(d < 7f && tick - (crisis.WarnTick - CombatSystem.Ticks(2.5f, rate)) > CombatSystem.Ticks(preset.ReactionTime, rate) ? 1 : 0);
+                b.Act = RivalAct.Guard;
+                WriteInput(em, self, serverTick, inp, false, false, false, false);
+                em.SetComponentData(self, b);
+                return true;
+            }
+            if (crisis.Kind == ToLive.Crisis.CrisisKind.Attack)
+            {
+                // fight the attackers (normal combat against the nearest one)
+                using var uq = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.Crisis.CrowdAttacker>(), ComponentType.ReadOnly<LocalTransform>());
+                using var units = uq.ToEntityArray(Allocator.Temp);
+                var best = float.MaxValue;
+                foreach (var u in units)
+                {
+                    var d = math.distance(em.GetComponentData<LocalTransform>(u).Position, pos);
+                    if (d < best && em.GetComponentData<CombatState>(u).Action != CombatAction.KnockedOut) { best = d; crisisFoe = u; }
+                }
+            }
+            return false;
+        }
+
 
         static void EndAct(ref RivalBrain b, uint tick)
         {
