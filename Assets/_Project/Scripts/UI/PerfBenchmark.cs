@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -23,6 +23,8 @@ namespace ToLive.UI
     {
         public static bool Running { get; private set; }
         public static string LastResult { get; private set; } = "";
+        /// <summary>Benchmark the transformation instead of the F9 stress: ritual next to the building.</summary>
+        public static bool Ritual;
 
         void Start()
         {
@@ -33,6 +35,7 @@ namespace ToLive.UI
             var cap = int.TryParse(Arg(args, "-tolive-cap"), out var c) ? c : 400;
             var mult = int.TryParse(Arg(args, "-tolive-mult"), out var m) ? m : 1;
             var output = Arg(args, "-tolive-out") ?? Path.Combine(Application.dataPath, "..", "bench.csv");
+            Ritual = args.Contains("-tolive-ritual");
             StartCoroutine(Run(cap, output, quitWhenDone: true, mult));
         }
 
@@ -49,8 +52,9 @@ namespace ToLive.UI
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         }
 
-        public static void StartInEditor(int cap, string output, int mult = 1)
+        public static void StartInEditor(int cap, string output, int mult = 1, bool ritual = false)
         {
+            Ritual = ritual;
             var host = FindAnyObjectByType<PerfBenchmark>();
             if (host != null && !Running) host.StartCoroutine(host.Run(cap, output, quitWhenDone: false, mult));
         }
@@ -79,13 +83,26 @@ namespace ToLive.UI
             var idle = new List<float>();
             yield return Measure(idle, 3f);
 
-            DebugCommands.Send(DebugCommandRequest.DestroyBuilding);
+            if (Ritual)
+            {
+                // stand next to the building with a full meter and hold the ritual input:
+                // build-up cracks + eruption break the building, which then collapses
+                DebugCommands.Send(DebugCommandRequest.BenchRitualSetup);
+                yield return new WaitForSeconds(0.5f);
+                FlightCameraRig.Yaw = 180f; FlightCameraRig.Pitch = 0f;
+                InputReader.RitualHeld = true;
+            }
+            else DebugCommands.Send(DebugCommandRequest.DestroyBuilding);
             var frames = new List<float>();
+            var collapsed = false;
             int peakLive = 0, peakTotal = 0;
             var t = 0f;
             while (t < 15f)
             {
-                AimAtBuilding();
+                if (Ritual && t > 1.0f) InputReader.RitualHeld = false;
+                // worst case: the whole building collapses right at the eruption
+                if (Ritual && !collapsed && t > 3.6f) { collapsed = true; DebugCommands.Send(DebugCommandRequest.DestroyBuilding); }
+                if (!Ritual) AimAtBuilding();
                 yield return null;
                 frames.Add(Time.unscaledDeltaTime * 1000f);
                 t += Time.unscaledDeltaTime;
@@ -96,7 +113,7 @@ namespace ToLive.UI
             var first3 = Take(frames, 3000f);
             LastResult = string.Join(",",
                 DateTime.Now.ToString("s"), Application.isEditor ? "Editor" : (Debug.isDebugBuild ? "DevBuild" : "Build"),
-                cap, mult, $"{Screen.width}x{Screen.height}",
+                (Ritual ? "ritual-" : "") + cap, mult, $"{Screen.width}x{Screen.height}",
                 Avg(idle).ToString("0.00"), Avg(frames).ToString("0.00"), (1000f / Avg(frames)).ToString("0.0"),
                 Pct(first3, 0.5f).ToString("0.00"), Pct(frames, 0.99f).ToString("0.00"), frames.Max().ToString("0.00"),
                 peakLive, peakTotal, DebrisSystem.BrokenChunks, DebrisSystem.TotalDebris,

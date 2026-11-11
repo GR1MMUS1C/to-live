@@ -27,9 +27,11 @@ namespace ToLive.Input
         // lost even if no simulation tick ran in that frame.
         public static int LightPresses, DashPresses, LockOnPresses;
         public static bool HeavyHeld, GuardHeld;
+        public static int GrabPresses;
+        public static bool BeamHeld, RitualHeld;
 
         InputAction m_Move, m_LookStick, m_LookDelta, m_Thrust, m_Ascend, m_Descend, m_Boost, m_Menu;
-        InputAction m_Light, m_Heavy, m_Dash, m_Guard, m_LockOn;
+        InputAction m_Light, m_Heavy, m_Dash, m_Guard, m_LockOn, m_Beam, m_Grab, m_Ritual;
 
         void OnEnable()
         {
@@ -53,6 +55,9 @@ namespace ToLive.Input
             m_Dash = map.FindAction("Dash", true);
             m_Guard = map.FindAction("Guard", true);
             m_LockOn = map.FindAction("LockOn", true);
+            m_Beam = map.FindAction("Beam", true);
+            m_Grab = map.FindAction("Grab", true);
+            m_Ritual = map.FindAction("Ritual", true);
             map.Enable();
         }
 
@@ -75,6 +80,11 @@ namespace ToLive.Input
             if (m_LockOn.WasPressedThisFrame()) LockOnPresses++;
             HeavyHeld = m_Heavy.IsPressed();
             GuardHeld = m_Guard.IsPressed();
+            BeamHeld = m_Beam.IsPressed();
+            if (m_Grab.WasPressedThisFrame()) GrabPresses++;
+            // Ritual: keyboard R, or BOTH stick clicks held together on a gamepad.
+            var pad = Gamepad.current;
+            RitualHeld = m_Ritual.IsPressed() || (pad != null && pad.leftStickButton.isPressed && pad.rightStickButton.isPressed);
             if (Gamepad.current != null && Gamepad.current.wasUpdatedThisFrame && Gamepad.current.leftStick.ReadValue().sqrMagnitude + Gamepad.current.rightStick.ReadValue().sqrMagnitude > 0.05f)
                 UsingGamepad = true;
             else if (Mouse.current != null && Mouse.current.delta.ReadValue().sqrMagnitude > 4f)

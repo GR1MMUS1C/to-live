@@ -53,6 +53,14 @@ namespace ToLive.CameraRig
         [Tooltip("Extra camera distance per metre between you and the target.")] public float LockDistanceFactor = 0.3f;
         public float LockMaxExtraDistance = 10f;
 
+        [Header("Ritual camera (transformation)")]
+        [Tooltip("Distance at the start of the ritual (pushed in close).")] public float RitualCloseDistance = 5f;
+        [Tooltip("Distance at the eruption (slowly pulled out).")] public float RitualFarDistance = 17f;
+        [Tooltip("Camera pitch at the start (negative = low, looking up at you).")] public float RitualLowPitch = -9f;
+        public float RitualEndPitch = 9f;
+        [Tooltip("Sideways camera offset at the start of the ritual (off the shoulder, so the body doesn't block the view).")] public float RitualShoulder = 1.6f;
+        public float RitualStartFov = 48f, RitualEndFov = 78f;
+
         [Header("Impact shake")]
         [Tooltip("How fast camera shake fades (metres per second).")] public float ShakeDecay = 2.5f;
 
@@ -72,6 +80,9 @@ namespace ToLive.CameraRig
         public static bool HasLockTarget { get; private set; }
         public static float3 LockTargetPosition { get; private set; }
         public static float LockTargetPower;
+        /// <summary>Set by PowerPresenter while the LOCAL player performs the ritual.</summary>
+        public static bool RitualCam;
+        public static float RitualProgress;
         public static float LocalPower { get; private set; }
         public static byte LocalAction { get; private set; }
         public static float LocalCharge { get; private set; }
@@ -111,7 +122,13 @@ namespace ToLive.CameraRig
             var t = SpeedCurve.Evaluate(Mathf.Clamp01(LocalSpeed / Mathf.Max(FullEffectSpeed, 1f)));
             m_SpeedT = Mathf.Lerp(m_SpeedT, t, 1f - Mathf.Exp(-Responsiveness * dt));
 
-            var pivot = (Vector3)playerPos + Vector3.up * PivotHeight;
+            var pivot = (Vector3)playerPos + Vector3.up * (RitualCam ? Mathf.Lerp(0.5f, PivotHeight, RitualProgress) : PivotHeight);
+            if (RitualCam)
+            {
+                // low and close, then a slow pull-out as the power builds
+                var k = 1f - Mathf.Exp(-5f * dt);
+                Pitch = Mathf.Lerp(Pitch, Mathf.Lerp(RitualLowPitch, RitualEndPitch, Mathf.SmoothStep(0f, 1f, RitualProgress)), k);
+            }
 
             // Soft lock-on: steer the orbit so the camera frames you and the target (you can still nudge it).
             var lockExtra = 0f;
@@ -146,6 +163,7 @@ namespace ToLive.CameraRig
 
             // Desired arm length, shortened by collision against the city.
             var desired = Mathf.Lerp(HoverDistance, BoostDistance, m_SpeedT) + lockExtra;
+            if (RitualCam) desired = Mathf.Lerp(RitualCloseDistance, RitualFarDistance, Mathf.Pow(Mathf.SmoothStep(0f, 1f, RitualProgress), 1.4f));
             var allowed = desired;
             if (TryGetPhysics(out var physics) &&
                 physics.SphereCast(pivot, CameraRadius, -(rotation * Vector3.forward), desired, out var hit, CollisionFilter.Default))
@@ -158,6 +176,7 @@ namespace ToLive.CameraRig
             if (m_Follow != null)
             {
                 m_Follow.CameraDistance = m_CurrentDistance;
+                m_Follow.ShoulderOffset = RitualCam ? new Vector3(Mathf.Lerp(RitualShoulder, 0.4f, RitualProgress), 0f, 0f) : Vector3.zero;
                 // Cinemachine damping is time-based, so at 400 m/s even 0.1 s means 40 m of lag.
                 // Convert the desired lag in metres into seconds for the current speed.
                 var damp = Mathf.Min(MaxDamping, LagDistance / Mathf.Max(LocalSpeed, 1f));
@@ -166,7 +185,7 @@ namespace ToLive.CameraRig
             if (Camera != null)
             {
                 var lens = Camera.Lens;
-                lens.FieldOfView = Mathf.Lerp(HoverFov, BoostFov, m_SpeedT);
+                lens.FieldOfView = RitualCam ? Mathf.Lerp(RitualStartFov, RitualEndFov, RitualProgress) : Mathf.Lerp(HoverFov, BoostFov, m_SpeedT);
                 Camera.Lens = lens;
             }
         }

@@ -68,6 +68,8 @@ namespace ToLive.Combat
             var delays = SystemAPI.GetComponentLookup<CommandDataInterpolationDelay>(true);
             var histories = SystemAPI.GetBufferLookup<PositionHistory>(true);
             var dummies = SystemAPI.GetComponentLookup<TrainingDummy>(true);
+            var powerStates = SystemAPI.GetComponentLookup<ToLive.Power.PowerState>(true);
+            var moveStates = SystemAPI.GetComponentLookup<ToLive.Power.MoveState>(true);
             var hits = new NativeList<HitEvent>(4, Allocator.Temp);
 
             foreach (var (combat, flight, xf, self) in
@@ -80,6 +82,9 @@ namespace ToLive.Combat
                 var input = hasInput ? inputs[self] : default;
 
                 if (c.Action == CombatAction.KnockedOut) continue;       // server respawn system handles it
+                if (c.Action == CombatAction.Grabbed) continue;          // held: only mashing (PowerSystem)
+                if (powerStates.HasComponent(self) && powerStates[self].Phase == ToLive.Power.SurgePhase.Ritual) continue; // locked
+                if (moveStates.HasComponent(self) && (moveStates[self].Carrying != Entity.Null || moveStates[self].Beam != 0)) { combat.ValueRW = c; flight.ValueRW = f; continue; }
                 if (Before(tick, c.HitStopUntilTick)) continue;          // frozen by hit-stop
                 if (c.Action == CombatAction.Launched)
                 {
@@ -235,6 +240,10 @@ namespace ToLive.Combat
         {
             var combats = SystemAPI.GetComponentLookup<CombatState>();
             var flights = SystemAPI.GetComponentLookup<FlightState>();
+            var powers = SystemAPI.GetComponentLookup<ToLive.Power.PowerState>(true);
+            var lastAttackers = SystemAPI.GetComponentLookup<ToLive.Power.LastAttacker>();
+            var hasPowerCfg = SystemAPI.TryGetSingleton<ToLive.Power.PowerConfig>(out var powerCfg);
+            var fuel = new NativeList<(Entity e, float amount)>(Allocator.Temp);
             foreach (var hit in hits)
             {
                 if (!combats.HasComponent(hit.Victim)) continue;
@@ -284,24 +293,35 @@ namespace ToLive.Combat
                     duration = cfg.LightStagger;
                 }
 
-                v.Power = math.max(0f, v.Power - damage);
+                // Power: attacker's tier/surge multiplies damage and knockback; the victim's phase defends.
+                var victimInRitual = false;
+                if (hasPowerCfg)
+                {
+                    var am = powers.HasComponent(hit.Attacker) ? powerCfg.Mods(powers[hit.Attacker]) : ToLive.Power.PowerMods.One;
+                    var vp = powers.HasComponent(hit.Victim) ? powers[hit.Victim] : default;
+                    var vm = powerCfg.Mods(vp);
+                    damage = damage * am.Damage / vm.Defense;
+                    speed *= am.Knockback;
+                    victimInRitual = vp.Phase == ToLive.Power.SurgePhase.Ritual;
+                }
+
                 v.LastHitTick = tick;
                 v.LastHitStrength = speed;
                 v.HitStopUntilTick = tick + Ticks(cfg.HitStopTime, rate);
                 v.ComboStep = 0; v.QueuedLight = 0; v.Charge = 0f; v.HitDone = 1;
-                v.Action = CombatAction.Launched;
-                v.ActionStartTick = tick;
-                v.ActionEndTick = tick + Ticks(duration, rate);
-                v.Ballistic = launch ? ballistic : (byte)2; // 2 = stagger: no gravity, can't be finished
-                vf.Velocity = dir * speed;
-
-                if (v.Power <= 0f)
+                if (!victimInRitual) // the ritual can't be interrupted by knockback
                 {
-                    v.Action = CombatAction.KnockedOut;
-                    v.ActionEndTick = tick + Ticks(cfg.RespawnDelay, rate);
-                    v.Ballistic = 1;
-                    v.LockTarget = Entity.Null;
+                    v.Action = CombatAction.Launched;
+                    v.ActionStartTick = tick;
+                    v.ActionEndTick = tick + Ticks(duration, rate);
+                    v.Ballistic = launch ? ballistic : (byte)2; // 2 = stagger: no gravity, can't be finished
+                    vf.Velocity = dir * speed;
                 }
+                if (lastAttackers.HasComponent(hit.Victim)) lastAttackers[hit.Victim] = new ToLive.Power.LastAttacker { Value = hit.Attacker };
+                fuel.Add((hit.Attacker, damage * (hasPowerCfg ? powerCfg.FuelPerDamageDealt : 1f)));
+                fuel.Add((hit.Victim, damage * (hasPowerCfg ? powerCfg.FuelPerDamageTaken : 0.6f)));
+
+                Damage.Apply(ref v, damage, tick, rate, cfg.RespawnDelay); // knocks out at zero (keeps the launch velocity)
 
                 combats[hit.Victim] = v;
                 flights[hit.Victim] = vf;
@@ -314,6 +334,7 @@ namespace ToLive.Combat
                     combats[hit.Attacker] = a;
                 }
             }
+            foreach (var (e, amount) in fuel) ToLive.Power.SurgeFuel.Add(state.EntityManager, e, amount);
         }
 
         static Entity FindVictim(Entity self, float3 strike, Entity lockTarget, NativeList<TargetInfo> targets,

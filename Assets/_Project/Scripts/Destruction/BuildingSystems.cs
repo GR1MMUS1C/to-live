@@ -61,6 +61,7 @@ namespace ToLive.Destruction
             {
                 if (r.Chunk < 0 || r.Chunk >= count || bs.IsBroken(r.Chunk)) continue;
                 bs.SetBroken(r.Chunk);
+                ToLive.Power.SurgeFuel.CreditChunk(ref state, r.Instigator);
                 bs.LastImpactTick = tick;
                 bs.LastImpactVelocity = r.Velocity;
                 changed = true;

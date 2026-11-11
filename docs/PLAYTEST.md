@@ -43,6 +43,16 @@ This is written for someone who knows Unreal but is new to Unity.
 | Guard (hold) | LB | Q |
 | Lock-on (toggle) | Right stick click | Tab |
 
+### Transformation controls (Milestone 3A)
+
+| Action | Gamepad | Keyboard / mouse |
+|---|---|---|
+| Beam (hold: a short charge, then it fires while held, draining energy) | LT | E |
+| Grab a staggered or launched target, then press again to throw where the camera aims | D-pad up | G |
+| Transformation ritual (when SURGE READY, hold about 0.4 s) | Hold BOTH stick clicks (L3 + R3) | Hold R |
+
+Pressing R3 for the ritual also toggles lock-on, and L3 is boost. That's harmless during the ritual, because you're locked in place.
+
 ### Debug keys
 
 | Key | What it does |
@@ -51,6 +61,10 @@ This is written for someone who knows Unreal but is new to Unity.
 | F5 | Reset the training dummy and rebuild the building (also in the Esc menu) |
 | F6 | Toggle the training dummy holding guard (for testing guard) |
 | F9 | Stress test: destroy the whole building at once (also in the Esc menu) |
+| F4 | Fill your surge meter (also ends surge or burnout, for quick retests) |
+| F7 | Toggle your tier (1 or 2) |
+| [ and ] | Slide your alignment toward trust or toward dominance (0.25 per press) |
+| F8 | The training dummy performs the ritual, using your alignment and tier, so you can watch from outside |
 
 ### Gears
 
@@ -90,6 +104,39 @@ To tune the combat numbers (damage, knockback, timing windows, hit-stop, break t
 2. Select **Combat Config**.
 
 Debris settings are on **Debris Config**. The cap measurements behind its defaults are in [PERF.md](PERF.md).
+
+## 1c. Transformation test (Milestone 3A, about 5 minutes)
+
+1. **Find a spot.** Press Play, click **Host**, then fly down to the street just north of the breakable building, about 10–15 m from it, facing it.
+2. **Fill the meter.** Fight the dummy, or break chunks with the beam (hold **LT**), until the SURGE bar is full and "SURGE READY" pulses.
+   - Shortcut: press **F4**.
+3. **The ritual.** Hold **L3 + R3** (or **R**). Over 3 seconds:
+   - you lock in place;
+   - the camera drops low and close off your shoulder, then slowly pulls out;
+   - the halo shards gather around you;
+   - rubble tears up from the ground and hovers, then rises higher;
+   - pressure rings pulse faster and faster;
+   - windows on nearby buildings blow out, and the building in front of you starts to crack;
+   - your energy colour washes over the street.
+4. **The eruption.** A hard flash and a shockwave. Everything lifted is flung outward, the building takes a big bite, and nearby characters are thrown back.
+5. **The surge** lasts about 20 s. Fly (much faster) and hit the dummy: damage is doubled. Watch the SURGE bar drain.
+6. **Burnout** comes next: the bar greys out and you're weaker for 6 s.
+7. **Alignment.** Press **[** four times (full trust) or **]** four times (full dominance), then repeat steps 2–3.
+   - Trust is calm cyan rings.
+   - Dominance is jagged, flickering crimson shards that snap outward.
+8. **Tier 2.** Press **F7**: a small, faint halo stays with you permanently.
+9. **From outside.** Stand about 30 m from the dummy and press **F8**. The dummy performs the ritual, and you see its halo, the light and the eruption from a distance.
+10. **Grab and throw.**
+    1. Lock on (R3), then press X three times to launch the dummy.
+    2. Dash (RB) after it, then press **D-pad up** to grab it.
+    3. Turn the camera toward the building and press **D-pad up** again to throw it through the building.
+11. **Beam.** Aim at the building and hold **LT**. Chunks along the beam break.
+
+To tune:
+
+- All transformation gameplay numbers are on **Power Config** (District subscene).
+- The look is on **Power Look** in `Main.unity`: energy colours, halo size and speed, glow, wash and the ritual effects.
+- The ritual camera settings are on **Flight Camera Rig**.
 
 ## 2. Two players on one PC (Multiplayer Play Mode)
 

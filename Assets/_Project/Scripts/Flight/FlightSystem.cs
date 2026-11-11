@@ -56,6 +56,9 @@ namespace ToLive.Flight
             var chunks = SystemAPI.GetComponentLookup<BuildingChunk>(true);
             var inputs = SystemAPI.GetComponentLookup<PlayerInput>(true);
             var broken = new NativeList<BreakRequest>(4, Allocator.Temp);
+            var powers = SystemAPI.GetComponentLookup<ToLive.Power.PowerState>(true);
+            var moves = SystemAPI.GetComponentLookup<ToLive.Power.MoveState>(true);
+            var hasPowerCfg = SystemAPI.TryGetSingleton<ToLive.Power.PowerConfig>(out var powerCfg);
 
             // WithAll<Simulate>: Netcode enables Simulate only on ghosts this world should simulate
             // this tick (all of them on the server, just your own player on a client).
@@ -68,6 +71,27 @@ namespace ToLive.Flight
 
                 // Hit-stop: freeze in place for a few ticks on impact.
                 if (CombatSystem.Before(tick, c.HitStopUntilTick)) continue;
+
+                // Grabbed: the server holds this body in front of its captor (GrabServerSystem).
+                if (c.Action == CombatAction.Grabbed) continue;
+
+                // Power: ritual locks you in place; tier/surge/burnout scale speeds; carrying slows you.
+                var fcfg = cfg;
+                if (hasPowerCfg && powers.HasComponent(entity))
+                {
+                    var ps = powers[entity];
+                    if (ps.Phase == ToLive.Power.SurgePhase.Ritual)
+                    {
+                        s.Velocity = float3.zero;
+                        flight.ValueRW = s;
+                        continue;
+                    }
+                    var speedMul = powerCfg.Mods(ps).Speed;
+                    if (moves.HasComponent(entity) && moves[entity].Carrying != Entity.Null) speedMul *= powerCfg.CarrySpeedScale;
+                    fcfg.HoverMaxSpeed *= speedMul; fcfg.HoverAcceleration *= speedMul;
+                    fcfg.CruiseMaxSpeed *= speedMul; fcfg.CruiseAcceleration *= speedMul;
+                    fcfg.BoostMaxSpeed *= speedMul; fcfg.BoostAcceleration *= speedMul;
+                }
 
                 var input = inputs.HasComponent(entity) ? inputs[entity] : new PlayerInput { LookYaw = s.Yaw };
                 var launched = c.Action == CombatAction.Launched || c.Action == CombatAction.KnockedOut;
@@ -89,7 +113,7 @@ namespace ToLive.Flight
                         s.Gear = FlightGear.Hover;
                         break;
                     default:
-                        Step(ref s, input, cfg, dt);
+                        Step(ref s, input, fcfg, dt);
                         break;
                 }
 
@@ -99,23 +123,15 @@ namespace ToLive.Flight
                 var damage = 0f;
 
                 if (hasPhysics)
-                    pos = MoveAndSlide(physics, pos, ref s.Velocity, cfg, combatCfg, dt, ref hits, chunks, canBreak, launched, ref broken, ref damage);
+                    pos = MoveAndSlide(physics, pos, ref s.Velocity, cfg, combatCfg, dt, ref hits, chunks, canBreak, launched, ref broken, ref damage, entity);
                 else
                     pos += s.Velocity * dt;
 
                 if (damage > 0f && c.Action != CombatAction.KnockedOut)
                 {
-                    c.Power = math.max(0f, c.Power - damage);
-                    if (c.Power <= 0f)
-                    {
-                        // Same knock-out transition as a strike (CombatSystem.ApplyHits). It runs in the
-                        // predicted loop on client and server alike, from the same predicted inputs.
-                        c.Action = CombatAction.KnockedOut;
-                        c.ActionEndTick = tick + CombatSystem.Ticks(combatCfg.RespawnDelay, rate);
-                        c.Ballistic = 1;
-                        c.LockTarget = Entity.Null;
-                        c.ComboStep = 0; c.QueuedLight = 0; c.Charge = 0f;
-                    }
+                    // Shared damage path: knocks out at zero. Runs in the predicted loop on client and
+                    // server alike, from the same predicted inputs.
+                    Damage.Apply(ref c, damage, tick, rate, combatCfg.RespawnDelay);
                     combat.ValueRW = c;
                 }
 
@@ -205,7 +221,7 @@ namespace ToLive.Flight
         static float3 MoveAndSlide(in PhysicsWorldSingleton physics, float3 pos, ref float3 velocity,
             in FlightConfig cfg, in CombatConfig combatCfg, float dt, ref NativeList<DistanceHit> hits,
             ComponentLookup<BuildingChunk> chunks, bool canBreak, bool launched,
-            ref NativeList<BreakRequest> broken, ref float damage)
+            ref NativeList<BreakRequest> broken, ref float damage, Entity self)
         {
             var filter = CollisionFilter.Default;
             var radius = cfg.CollisionRadius;
@@ -246,7 +262,7 @@ namespace ToLive.Flight
                 {
                     // Smash: keep going through the chunk, a bit slower.
                     collector.Ignore(hit.Entity);
-                    broken.Add(new BreakRequest { Chunk = chunks[hit.Entity].Index, Velocity = velocity });
+                    broken.Add(new BreakRequest { Chunk = chunks[hit.Entity].Index, Velocity = velocity, Instigator = self });
                     var keep = 1f - combatCfg.ChunkSpeedLoss;
                     velocity *= keep;
                     delta *= keep;

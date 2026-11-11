@@ -76,7 +76,7 @@ namespace ToLive.Combat
         static TrailRenderer CreateTrail()
         {
             if (s_TrailMaterial == null)
-                s_TrailMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = new Color(1f, 0.95f, 0.8f) };
+                { s_TrailMaterial = FxMaterials.Unlit(); s_TrailMaterial.color = new Color(1f, 0.95f, 0.8f); }
             var go = new GameObject("KnockbackTrail");
             var t = go.AddComponent<TrailRenderer>();
             t.sharedMaterial = s_TrailMaterial;

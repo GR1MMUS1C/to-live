@@ -29,6 +29,7 @@ namespace ToLive.EditorTools
         const string PrefabsDir = Root + "/Prefabs";
         const string ScenesDir = Root + "/Scenes";
         const string UIDir = Root + "/UI";
+        const string RenderingDir = Root + "/Rendering";
         const string PlayerPrefabPath = PrefabsDir + "/Player.prefab";
         const string DistrictScenePath = ScenesDir + "/District.unity";
         const string MainScenePath = ScenesDir + "/Main.unity";
@@ -73,7 +74,7 @@ namespace ToLive.EditorTools
 
         static void EnsureFolders()
         {
-            foreach (var dir in new[] { MaterialsDir, PrefabsDir, ScenesDir, UIDir })
+            foreach (var dir in new[] { MaterialsDir, PrefabsDir, ScenesDir, UIDir, RenderingDir })
                 Directory.CreateDirectory(dir);
             AssetDatabase.Refresh();
         }
@@ -335,6 +336,7 @@ namespace ToLive.EditorTools
 
             var combatConfig = new GameObject("Combat Config");
             combatConfig.AddComponent<ToLive.Combat.CombatConfigAuthoring>();
+            new GameObject("Power Config").AddComponent<ToLive.Power.PowerConfigAuthoring>();
             var debrisConfig = new GameObject("Debris Config");
             debrisConfig.AddComponent<ToLive.Destruction.DebrisConfigAuthoring>().DebrisPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DebrisPrefabPath);
 
@@ -370,6 +372,10 @@ namespace ToLive.EditorTools
             mainCamera.farClipPlane = 3000f;
             mainCamera.nearClipPlane = 0.2f;
             mainCamera.gameObject.AddComponent<CinemachineBrain>();
+            var camData = mainCamera.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            if (camData == null) camData = mainCamera.gameObject.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            camData.renderPostProcessing = true;
+            var powerVolume = CreateVolumes();
 
             var target = new GameObject("CameraTarget");
             var cmGo = new GameObject("CM Flight Camera");
@@ -408,10 +414,110 @@ namespace ToLive.EditorTools
             doc.panelSettings = GetOrCreatePanelSettings();
             var ui = uiGo.AddComponent<GameUI>();
             uiGo.AddComponent<CombatHud>();
+            // Material assets for runtime effects (keeps their shaders in player builds).
+            var fx = new GameObject("FX Materials").AddComponent<ToLive.Combat.FxMaterialSource>();
+            fx.Unlit = GetOrCreateShaderMaterial("M_FxUnlit", "Universal Render Pipeline/Unlit");
+            fx.Lit = GetOrCreateShaderMaterial("M_FxLit", "Universal Render Pipeline/Lit");
+            fx.Particles = GetOrCreateShaderMaterial("M_FxParticlesAdditive", "Universal Render Pipeline/Particles/Unlit");
+            fx.Particles.SetFloat("_Surface", 1f);
+            fx.Particles.SetFloat("_Blend", 2f); // additive
+            fx.Particles.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            fx.Particles.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            fx.Particles.SetFloat("_ZWrite", 0f);
+            fx.Particles.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            fx.Particles.renderQueue = 3000;
+            EditorUtility.SetDirty(fx.Particles);
+
+            var lookGo = new GameObject("Power Look");
+            lookGo.AddComponent<ToLive.Power.PowerLook>();
+            lookGo.AddComponent<ToLive.Power.PowerPresenter>().PowerVolume = powerVolume;
             systems.AddComponent<PerfBenchmark>();
             ui.GameplayScene = subScene;
 
             EditorSceneManager.SaveScene(scene, MainScenePath);
+        }
+
+        /// <summary>
+        /// Post-processing. Art rule: the world is muted, power is the only saturated colour.
+        ///  - "Base Look" (global, always on): ACES tonemapping, desaturated, gentle bloom.
+        ///  - "Power Volume" (global, weight 0): colour push + strong bloom; PowerPresenter raises its
+        ///    weight during a ritual/surge and tints it with the energy colour.
+        /// </summary>
+        static UnityEngine.Rendering.Volume CreateVolumes()
+        {
+            var baseProfile = GetOrCreateProfile(RenderingDir + "/BaseLook.asset");
+            var tone = Ensure<UnityEngine.Rendering.Universal.Tonemapping>(baseProfile);
+            tone.mode.Override(UnityEngine.Rendering.Universal.TonemappingMode.ACES);
+            var ca = Ensure<UnityEngine.Rendering.Universal.ColorAdjustments>(baseProfile);
+            ca.saturation.Override(-35f);
+            ca.contrast.Override(12f);
+            ca.postExposure.Override(0.25f);
+            var bloom = Ensure<UnityEngine.Rendering.Universal.Bloom>(baseProfile);
+            bloom.threshold.Override(1.1f);
+            bloom.intensity.Override(0.8f);
+            bloom.scatter.Override(0.7f);
+            EditorUtility.SetDirty(baseProfile);
+
+            var powerProfile = GetOrCreateProfile(RenderingDir + "/PowerSurge.asset");
+            var pca = Ensure<UnityEngine.Rendering.Universal.ColorAdjustments>(powerProfile);
+            pca.saturation.Override(30f);
+            pca.contrast.Override(22f);
+            pca.postExposure.Override(0.35f);
+            pca.colorFilter.Override(Color.white);
+            var pbloom = Ensure<UnityEngine.Rendering.Universal.Bloom>(powerProfile);
+            pbloom.threshold.Override(1.0f);
+            pbloom.intensity.Override(1.6f);
+            pbloom.scatter.Override(0.78f);
+            pbloom.tint.Override(Color.white);
+            var vig = Ensure<UnityEngine.Rendering.Universal.Vignette>(powerProfile);
+            vig.intensity.Override(0.38f);
+            vig.smoothness.Override(0.45f);
+            var chroma = Ensure<UnityEngine.Rendering.Universal.ChromaticAberration>(powerProfile);
+            chroma.intensity.Override(0.25f);
+            EditorUtility.SetDirty(powerProfile);
+            AssetDatabase.SaveAssets();
+
+            var baseGo = new GameObject("Base Look (Volume)");
+            var baseVol = baseGo.AddComponent<UnityEngine.Rendering.Volume>();
+            baseVol.isGlobal = true;
+            baseVol.sharedProfile = baseProfile;
+
+            var powerGo = new GameObject("Power Volume");
+            var powerVol = powerGo.AddComponent<UnityEngine.Rendering.Volume>();
+            powerVol.isGlobal = true;
+            powerVol.priority = 10f;
+            powerVol.weight = 0f;
+            powerVol.sharedProfile = powerProfile;
+            return powerVol;
+        }
+
+        static Material GetOrCreateShaderMaterial(string name, string shader)
+        {
+            var path = $"{MaterialsDir}/{name}.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat == null)
+            {
+                mat = new Material(Shader.Find(shader));
+                AssetDatabase.CreateAsset(mat, path);
+            }
+            return mat;
+        }
+
+        static UnityEngine.Rendering.VolumeProfile GetOrCreateProfile(string path)
+        {
+            var p = AssetDatabase.LoadAssetAtPath<UnityEngine.Rendering.VolumeProfile>(path);
+            if (p != null) return p;
+            p = ScriptableObject.CreateInstance<UnityEngine.Rendering.VolumeProfile>();
+            AssetDatabase.CreateAsset(p, path);
+            return p;
+        }
+
+        static T Ensure<T>(UnityEngine.Rendering.VolumeProfile profile) where T : UnityEngine.Rendering.VolumeComponent
+        {
+            if (profile.TryGet<T>(out var c)) return c;
+            c = profile.Add<T>(false);
+            AssetDatabase.AddObjectToAsset(c, profile); // volume components are sub-assets of the profile
+            return c;
         }
 
         static PanelSettings GetOrCreatePanelSettings()

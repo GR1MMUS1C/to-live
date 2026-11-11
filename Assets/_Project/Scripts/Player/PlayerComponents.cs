@@ -36,6 +36,11 @@ namespace ToLive.Player
         public InputEvent LockOn;  // right stick click / Tab
         public byte HeavyHeld;     // Y / RMB (hold to charge)
         public byte GuardHeld;     // LB / Q
+
+        // Milestone 3
+        public InputEvent Grab;    // D-pad up / G (grab, press again to throw)
+        public byte BeamHeld;      // LT / E (hold)
+        public byte RitualHeld;    // L3 + R3 held together / R (hold)
     }
 
     /// <summary>

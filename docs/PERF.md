@@ -99,3 +99,28 @@ These Editor runs were made before spawning was spread over several frames (`Max
 - Each run uses one building (119 chunks). The multiplier stands in for more destruction, but it doesn't cover the extra static-collider rebuilds that several buildings would add.
 - The camera sat at the spawn point, roughly 60 to 200 m from the building, so GPU cost for close-up debris isn't covered.
 - Network snapshot size wasn't measured. Break state is 4 × 32-bit masks plus a generation counter and an impact velocity, delta-compressed. It only changes on ticks when something breaks.
+
+## Milestone 3A: transformation + collapse (measured 2026-11-10, same machine)
+
+The benchmark ran with `-tolive-ritual` in the Windows development build at 1600×900. The camera stays on the player.
+
+1. The player stands 3 m from the breakable building with a full surge meter and holds the ritual input.
+2. The 3 s build-up runs: cracks, push, lifted rubble, rings and the colour wash.
+3. At the eruption, the stress command collapses the whole building, so the eruption, the fling of lifted rubble and a full collapse all land on the same frames.
+4. Frames are recorded for 15 s from the start of the ritual.
+
+| liveCap | multiplier | peak live | total pieces | avg ms | avg fps | first-3 s median ms | p99 ms | worst frame ms |
+|---|---|---|---|---|---|---|---|---|
+| 1000 | 1 | 723 | 728 | 1.66 | 601 | 1.39 | 4.10 | 14.9 |
+| unlimited | 1 | 721 | 728 | 1.82 | 550 | 1.40 | 4.41 | 15.8 |
+| 1000 | 4 | 1000 | 2912 | 2.19 | 457 | 1.62 | 5.62 | 15.8 |
+| unlimited | 4 | 2905 | 2912 | 2.74 | 365 | 2.81 | 6.51 | 25.5 |
+| 1000 | 8 | 1000 | 5824 | 2.08 | 480 | 1.56 | 4.79 | 16.7 |
+| unlimited | 8 | 5814 | 5824 | 3.11 | 322 | 1.76 | 9.70 | 17.2 |
+
+What the numbers show:
+
+- The ritual's effects cost very little next to the destruction. The halo, light, post-processing push, rubble, rings and glass bursts together measured 1.6–1.7 ms idle and about 1.4 ms median during the build-up.
+- The worst single frame is still the collapse spawn: 15–17 ms with the cap at 1000, up to 25 ms without a cap. Every average and p99 is far inside 16.7 ms.
+- **The recommendation stays a live cap of 1000.** It keeps the worst frame at about 16 ms even with 8 times the debris.
+- These runs are faster overall than the Milestone 2 numbers because the camera faces the building from close range, so far less of the city is drawn.
