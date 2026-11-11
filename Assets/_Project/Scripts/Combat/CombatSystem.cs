@@ -334,7 +334,7 @@ namespace ToLive.Combat
                     combats[hit.Attacker] = a;
                 }
             }
-            foreach (var (e, amount) in fuel) ToLive.Power.SurgeFuel.Add(state.EntityManager, e, amount);
+            foreach (var (e, amount) in fuel) ToLive.Power.SurgeFuel.AddPlaceholder(state.EntityManager, e, amount);
         }
 
         static Entity FindVictim(Entity self, float3 strike, Entity lockTarget, NativeList<TargetInfo> targets,

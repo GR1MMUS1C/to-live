@@ -19,6 +19,17 @@ namespace ToLive.Power
     /// </summary>
     public static class SurgeFuel
     {
+        /// <summary>
+        /// Milestone 3 placeholder producers (damage dealt/taken, chunks). Ignored once the crowd pays
+        /// the fuel (District Config "Crowd Fuel", milestone 4).
+        /// </summary>
+        public static void AddPlaceholder(EntityManager em, Entity target, float amount)
+        {
+            using var q = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.District.DistrictConfig>());
+            if (q.CalculateEntityCount() == 1 && q.GetSingleton<ToLive.District.DistrictConfig>().CrowdFuel) return;
+            Add(em, target, amount);
+        }
+
         public static void Add(EntityManager em, Entity target, float amount)
         {
             if (target == Entity.Null || amount <= 0f) return;
@@ -33,8 +44,8 @@ namespace ToLive.Power
             using var q = em.CreateEntityQuery(ComponentType.ReadOnly<PowerConfig>());
             if (q.CalculateEntityCount() != 1) return;
             var cfg = q.GetSingleton<PowerConfig>();
-            Add(em, attacker, damage * cfg.FuelPerDamageDealt);
-            Add(em, victim, damage * cfg.FuelPerDamageTaken);
+            AddPlaceholder(em, attacker, damage * cfg.FuelPerDamageDealt);
+            AddPlaceholder(em, victim, damage * cfg.FuelPerDamageTaken);
         }
 
         /// <summary>A chunk broke: credit whoever launched the body that smashed it (or the body itself).</summary>
@@ -52,7 +63,7 @@ namespace ToLive.Power
             }
             var cfgQ = em.CreateEntityQuery(ComponentType.ReadOnly<PowerConfig>());
             var perChunk = cfgQ.CalculateEntityCount() == 1 ? cfgQ.GetSingleton<PowerConfig>().FuelPerChunk : 2f;
-            Add(em, credit, perChunk);
+            AddPlaceholder(em, credit, perChunk);
         }
     }
 
@@ -160,6 +171,9 @@ namespace ToLive.Power
                     var pw = SystemAPI.GetComponentRW<PowerState>(caster);
                     pw.ValueRW.Erupted = 1;
                     ToLive.Opposition.HeatSource.Eruption(state.EntityManager, caster); // the army notices
+                    if (SystemAPI.TryGetSingleton<ToLive.District.DistrictConfig>(out var dcfg)) // people near it die or flee
+                        ToLive.District.CrowdHazards.Kill(state.EntityManager, new float3(pos.x, 0f, pos.z), cfg.EruptionRadius * dcfg.EruptionKillFraction,
+                            cfg.EruptionRadius * 2f, caster, ToLive.District.Cause.EruptionNearCrowd);
                     Debug.Log($"[ToLive] Eruption by {caster} at {pos}");
                 }
             }
@@ -310,7 +324,7 @@ namespace ToLive.Power
                     fuel.Add((e, dmg * cfg.FuelPerDamageTaken));
                 }
             }
-            foreach (var (e, amount) in fuel) SurgeFuel.Add(state.EntityManager, e, amount);
+            foreach (var (e, amount) in fuel) SurgeFuel.AddPlaceholder(state.EntityManager, e, amount);
         }
     }
 

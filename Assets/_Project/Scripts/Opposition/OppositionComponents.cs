@@ -196,6 +196,13 @@ namespace ToLive.Opposition
             Add(em, god, count * cfg.HeatPerCollapsedChunk);
         }
 
+        /// <summary>Civilians killed by this god (milestone 4: heat follows dominance).</summary>
+        public static void CiviliansKilled(EntityManager em, Entity god, int count)
+        {
+            if (!IsGod(em, god) || !TryConfig(em, out var cfg)) return;
+            Add(em, god, count * cfg.HeatPerCivilianDeath);
+        }
+
         /// <summary>A ritual eruption.</summary>
         public static void Eruption(EntityManager em, Entity caster)
         {

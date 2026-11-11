@@ -216,6 +216,7 @@ namespace ToLive.Opposition
                     u.ShotTick = tick; u.ShotHit = (byte)(hit ? 1 : 0);
                     u.ShotEnd = hit ? tgt.Position : tgt.Position + random.NextFloat3Direction() * random.NextFloat(1.5f, 4f);
                     if (hit) HitCharacter(em, self, tgt.Entity, stats.Damage, dir, cfg.TracerFlinch, false, 0f, ctx, false);
+                    ToLive.District.CrowdHazards.Scare(em, new float3(u.ShotEnd.x, 0f, u.ShotEnd.z), 15f); // gunfire scares people
                     return;
                 }
                 case UnitKind.Gunship:
@@ -395,6 +396,11 @@ namespace ToLive.Opposition
                     if (dmg > 0f) { hitCount++; dealt += dmg; }
                 }
                 Debug.Log($"[ToLive] Rocket exploded at {at}: {hitCount} bodies hit, {dealt:0.0} damage");
+                {
+                    using var dq = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.District.DistrictConfig>());
+                    if (dq.CalculateEntityCount() == 1) // people under the blast die, more flee
+                        ToLive.District.CrowdHazards.Kill(em, at, dq.GetSingleton<ToLive.District.DistrictConfig>().RocketKillRadius, cfg.RocketRadius * 4f, rk.Owner, ToLive.District.Cause.CiviliansKilled);
+                }
                 if (hasGraph && cfg.RocketBreakRadius > 0.5f)
                     RitualServerSystem.BreakInRadius(ref state, graph, at, cfg.RocketBreakRadius, rk.Owner, math.normalizesafe(rk.Velocity) * 15f);
                 em.DestroyEntity(r);

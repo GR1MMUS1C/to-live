@@ -92,6 +92,9 @@ namespace ToLive.Combat
         public const byte SpawnEachUnit = 13;
         public const byte RivalToggle = 14;
         public const byte RivalDifficulty = 15;
-        public const byte BenchUnits = 16;      // benchmark: spawn Arg response units near the sender and blame the humans
+        public const byte BenchUnits = 16;
+        // Milestone 4A: crowds
+        public const byte CrowdReset = 17;        // respawn the crowd with Arg*10 citizens (bodies cleared)
+        public const byte CitizenGhostProbe = 18; // benchmark option A: Arg*10 citizens as individual ghosts      // benchmark: spawn Arg response units near the sender and blame the humans
     }
 }

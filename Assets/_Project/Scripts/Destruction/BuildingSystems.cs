@@ -58,10 +58,12 @@ namespace ToLive.Destruction
                 SystemAPI.SetComponent(graphEntity, new BuildingCommand());
 
             var lastInstigator = Entity.Null; // the DestroyAll debug path has none: it stays heat-free
+            var brokenNow = new NativeList<(int chunk, Entity who)>(Allocator.Temp); // for the crowd (falling chunks kill people)
             foreach (var r in requests)
             {
                 if (r.Chunk < 0 || r.Chunk >= count || bs.IsBroken(r.Chunk)) continue;
                 lastInstigator = r.Instigator;
+                brokenNow.Add((r.Chunk, r.Instigator));
                 bs.SetBroken(r.Chunk);
                 ToLive.Power.SurgeFuel.CreditChunk(ref state, r.Instigator);
                 ToLive.Opposition.HeatSource.ChunkBroken(state.EntityManager, r.Instigator); // destruction raises heat
@@ -73,17 +75,36 @@ namespace ToLive.Destruction
 
             if (changed && command.Rebuild == 0)
             {
-                var collapsed = CollapseUnsupported(ref bs, SystemAPI.GetBuffer<ChunkNode>(graphEntity), SystemAPI.GetBuffer<ChunkNeighbor>(graphEntity), count);
+                var collapsedList = new NativeList<int>(Allocator.Temp);
+                var collapsed = CollapseUnsupported(ref bs, SystemAPI.GetBuffer<ChunkNode>(graphEntity), SystemAPI.GetBuffer<ChunkNeighbor>(graphEntity), count, collapsedList);
+                foreach (var ci in collapsedList) brokenNow.Add((ci, lastInstigator));
                 // whoever broke the supports this tick is responsible for what falls (surge fuel unchanged)
                 if (collapsed > 0 && lastInstigator != Entity.Null)
                     ToLive.Opposition.HeatSource.ChunksCollapsed(state.EntityManager, lastInstigator, collapsed);
             }
 
             if (changed) bsRef.ValueRW = bs;
+
+            // the crowd: falling chunks kill people below (server decided), destruction feeds fear
+            if (brokenNow.Length > 0 && SystemAPI.TryGetSingleton<ToLive.District.DistrictConfig>(out var dcfg))
+            {
+                var nodes = SystemAPI.GetBuffer<ChunkNode>(graphEntity).ToNativeArray(Allocator.Temp);
+                var perWho = new NativeHashMap<Entity, int>(4, Allocator.Temp);
+                foreach (var (chunk, who) in brokenNow)
+                {
+                    var n = nodes[chunk];
+                    ToLive.District.CrowdHazards.Kill(state.EntityManager, new Unity.Mathematics.float3(n.Center.x, 0f, n.Center.z),
+                        dcfg.ChunkKillRadius + 0.5f * Unity.Mathematics.math.max(n.Size.x, n.Size.z), 30f, who, ToLive.District.Cause.CiviliansKilled);
+                    if (who == Entity.Null) continue;
+                    perWho.TryGetValue(who, out var k);
+                    perWho[who] = k + 1;
+                }
+                foreach (var kv in perWho) ToLive.District.DistrictSource.Destruction(state.EntityManager, kv.Key, kv.Value);
+            }
         }
 
         /// <summary>Flood-fill from grounded intact chunks; everything not reached falls.</summary>
-        static int CollapseUnsupported(ref BuildingState bs, DynamicBuffer<ChunkNode> nodes, DynamicBuffer<ChunkNeighbor> neighbors, int count)
+        static int CollapseUnsupported(ref BuildingState bs, DynamicBuffer<ChunkNode> nodes, DynamicBuffer<ChunkNeighbor> neighbors, int count, NativeList<int> collapsedOut)
         {
             var supported = new NativeArray<bool>(count, Allocator.Temp);
             var queue = new NativeQueue<int>(Allocator.Temp);
@@ -111,6 +132,7 @@ namespace ToLive.Destruction
             {
                 if (supported[i] || bs.IsBroken(i)) continue;
                 bs.SetBroken(i);
+                collapsedOut.Add(i);
                 collapsed++;
             }
             if (collapsed > 0) Debug.Log($"[ToLive] Structural collapse: {collapsed} unsupported chunks fell");

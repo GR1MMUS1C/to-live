@@ -52,6 +52,7 @@ namespace ToLive.EditorTools
             CreatePlayerPrefab();
             CreateCombatPrefabs();
             CreateOppositionPrefabs();
+            CreateDistrictPrefabs();
             GenerateDistrictScene();
             CreateMainScene();
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(MainScenePath, true) };
@@ -69,6 +70,7 @@ namespace ToLive.EditorTools
             if (AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath) == null) CreatePlayerPrefab();
             CreateCombatPrefabs();
             CreateOppositionPrefabs();
+            CreateDistrictPrefabs();
             GenerateDistrictScene();
             if (File.Exists(MainScenePath)) EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
             Debug.Log("[ToLive] District regenerated.");
@@ -343,6 +345,7 @@ namespace ToLive.EditorTools
             debrisConfig.AddComponent<ToLive.Destruction.DebrisConfigAuthoring>().DebrisPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DebrisPrefabPath);
 
             AddOppositionObjects();
+            AddDistrictObjects(placed, ground);
 
             var flightConfig = new GameObject("Flight Config");
             flightConfig.AddComponent<FlightConfigAuthoring>();
