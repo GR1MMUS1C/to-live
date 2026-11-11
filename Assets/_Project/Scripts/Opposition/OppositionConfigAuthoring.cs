@@ -41,6 +41,8 @@ namespace ToLive.Opposition
 
         [Header("Heat sources (placeholder for milestone 4 dominance)")]
         public float HeatPerChunkBroken = 1.5f;
+        [Tooltip("Heat per chunk that falls in a structural collapse (blamed on whoever broke the supports). Lower than a direct break so dropping the tower in one hit can't jump straight to level 3.")]
+        public float HeatPerCollapsedChunk = 0.5f;
         [Tooltip("Heat per point of damage dealt to a response unit.")] public float HeatPerUnitDamage = 0.4f;
         public float HeatPerEruption = 25f;
 
@@ -108,7 +110,7 @@ namespace ToLive.Opposition
                     AntiGodPrefab = a.AntiGodPrefab != null ? GetEntity(a.AntiGodPrefab, TransformUsageFlags.Dynamic) : Entity.Null,
                     RocketPrefab = a.RocketPrefab != null ? GetEntity(a.RocketPrefab, TransformUsageFlags.Dynamic) : Entity.Null,
                     StatePrefab = a.StatePrefab != null ? GetEntity(a.StatePrefab, TransformUsageFlags.None) : Entity.Null,
-                    HeatPerChunk = a.HeatPerChunkBroken, HeatPerUnitDamage = a.HeatPerUnitDamage, HeatPerEruption = a.HeatPerEruption,
+                    HeatPerChunk = a.HeatPerChunkBroken, HeatPerCollapsedChunk = a.HeatPerCollapsedChunk, HeatPerUnitDamage = a.HeatPerUnitDamage, HeatPerEruption = a.HeatPerEruption,
                     Level1 = a.Level1, Level2 = a.Level2, Level3 = a.Level3, MaxHeat = a.MaxHeat,
                     QuietTime = a.QuietTime, DecayPerSecond = a.DecayPerSecond,
                     BlameQuietTime = a.BlameQuietTime, BlameDecayPerSecond = a.BlameDecayPerSecond,

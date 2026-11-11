@@ -183,6 +183,19 @@ namespace ToLive.Opposition
             Add(em, god, cfg.HeatPerChunk);
         }
 
+        /// <summary>
+        /// <paramref name="count"/> chunks fell in a structural collapse caused by <paramref name="instigator"/>'s
+        /// break. Same responsibility rules as <see cref="ChunkBroken"/>, one queued event, a lower per-chunk rate
+        /// so one hit that drops the tower can't jump straight to level 3.
+        /// </summary>
+        public static void ChunksCollapsed(EntityManager em, Entity instigator, int count)
+        {
+            if (count <= 0) return;
+            var god = Responsible(em, instigator);
+            if (!IsGod(em, god) || !TryConfig(em, out var cfg)) return;
+            Add(em, god, count * cfg.HeatPerCollapsedChunk);
+        }
+
         /// <summary>A ritual eruption.</summary>
         public static void Eruption(EntityManager em, Entity caster)
         {

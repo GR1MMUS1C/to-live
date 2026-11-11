@@ -181,6 +181,34 @@ namespace ToLive.EditorTools
             return $"rival power {c.Power} meter {p.Meter}";
         }
 
+        /// <summary>
+        /// Break every grounded chunk (so the rest collapses) with an instigator: 0 nobody, 1 the first
+        /// human, 2 the first response unit (as a rocket would). Returns heat before the break.
+        /// </summary>
+        public static string BreakGroundFloorBy(int who)
+        {
+            var w = ServerWorld(); if (w == null) return "no server";
+            var em = w.EntityManager;
+            var instigator = Entity.Null;
+            if (who == 1)
+                using (var cq = em.CreateEntityQuery(ComponentType.ReadOnly<CharacterKind>()))
+                using (var chars = cq.ToEntityArray(Allocator.Temp))
+                    foreach (var c in chars) if (em.GetComponentData<CharacterKind>(c).Kind == CharacterKind.Human) { instigator = c; break; }
+            if (who == 2)
+                using (var uq = em.CreateEntityQuery(ComponentType.ReadOnly<ResponseUnit>()))
+                using (var units = uq.ToEntityArray(Allocator.Temp))
+                    if (units.Length > 0) instigator = units[0];
+            using var q = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.Destruction.BuildingGraph>());
+            var g = q.GetSingletonEntity();
+            var nodes = em.GetBuffer<ToLive.Destruction.ChunkNode>(g).ToNativeArray(Allocator.Temp);
+            var req = em.GetBuffer<ToLive.Destruction.BreakRequest>(g);
+            var n = 0;
+            for (var i = 0; i < nodes.Length; i++)
+                if (nodes[i].Grounded != 0) { req.Add(new ToLive.Destruction.BreakRequest { Chunk = i, Velocity = new float3(0, 0, -20), Instigator = instigator }); n++; }
+            using var hq = em.CreateEntityQuery(ComponentType.ReadOnly<HeatState>());
+            return $"requested {n} grounded chunks by {instigator}; heat before {hq.GetSingleton<HeatState>().Value:0.0}";
+        }
+
         /// <summary>Launch the rival from a position with a velocity, as if hit by the first human (e.g. into the building).</summary>
         public static string LaunchRival(float x, float y, float z, float vx, float vy, float vz)
         {

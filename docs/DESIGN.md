@@ -148,7 +148,7 @@ Every number is on **Power Config**.
 
 **Heat** (per district, 0 to 3, server-decided, replicated on one small "Opposition State" ghost, shown as pips on the HUD).
 
-- `HeatSource` / `HeatEvent` is the single, clearly named place where heat rises, like the surge fuel source. Today's producers: chunks broken (blamed on whoever is responsible: a thrown unit is the thrower's fault), damage dealt to response units, ritual eruptions. Milestone 4's dominance replaces the producers.
+- `HeatSource` / `HeatEvent` is the single, clearly named place where heat rises, like the surge fuel source. Today's producers: chunks broken (blamed on whoever is responsible: a thrown unit is the thrower's fault), chunks that fall in the structural collapse that break caused (`HeatPerCollapsedChunk`, 0.5 vs 1.5 for a direct break, so dropping the whole tower in one hit reaches level 2, not straight to 3), damage dealt to response units, ritual eruptions. The F9 stress destroy and the army's own rockets raise no heat. Milestone 4's dominance replaces the producers.
 - Heat decays after a quiet period. Levels are thresholds on the raw value.
 - Each god (player or rival) has a server-only **blame** that rises with the heat it causes and fades after about 20 s. The army targets blamed gods first, and only leaves while nobody is blamed.
 
