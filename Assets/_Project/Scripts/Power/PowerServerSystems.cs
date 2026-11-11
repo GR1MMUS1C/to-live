@@ -80,12 +80,14 @@ namespace ToLive.Power
             var powers = SystemAPI.GetComponentLookup<PowerState>();
             var combats = SystemAPI.GetComponentLookup<CombatState>();
             var baseMax = SystemAPI.TryGetSingleton<CombatConfig>(out var cc) ? cc.MaxPower : 100f;
+            var tick = SystemAPI.TryGetSingleton<NetworkTime>(out var net) && net.ServerTick.IsValid ? net.ServerTick.TickIndexForValidTick : 0u;
             foreach (var ev in events)
             {
                 if (!powers.HasComponent(ev.Target)) continue;
                 var p = powers[ev.Target];
                 p.Fuel += ev.Amount;
-                if (p.Phase == SurgePhase.None) p.Meter = math.saturate(p.Meter + ev.Amount * cfg.MeterPerFuel);
+                var suppressed = p.SuppressedUntilTick != 0 && CombatSystem.Before(tick, p.SuppressedUntilTick); // hit by the anti-god beam
+                if (p.Phase == SurgePhase.None && !suppressed) p.Meter = math.saturate(p.Meter + ev.Amount * cfg.MeterPerFuel);
                 if (p.Tier < 2 && p.Fuel >= cfg.Tier2FuelThreshold)
                 {
                     p.Tier = 2;
@@ -157,12 +159,13 @@ namespace ToLive.Power
                     PushCharacters(ref state, caster, pos, cfg.EruptionRadius, cfg.EruptionKnockback * mods.Knockback, cfg.EruptionDamage * mods.Damage, tick, true, combatCfg, dt);
                     var pw = SystemAPI.GetComponentRW<PowerState>(caster);
                     pw.ValueRW.Erupted = 1;
+                    ToLive.Opposition.HeatSource.Eruption(state.EntityManager, caster); // the army notices
                     Debug.Log($"[ToLive] Eruption by {caster} at {pos}");
                 }
             }
         }
 
-        static void BreakInRadius(ref SystemState state, Entity graphEntity, float3 center, float radius, Entity instigator, float3 velocity)
+        public static void BreakInRadius(ref SystemState state, Entity graphEntity, float3 center, float radius, Entity instigator, float3 velocity)
         {
             if (radius <= 0.5f) return;
             var em = state.EntityManager;

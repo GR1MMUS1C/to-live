@@ -124,3 +124,43 @@ What the numbers show:
 - The worst single frame is still the collapse spawn: 15–17 ms with the cap at 1000, up to 25 ms without a cap. Every average and p99 is far inside 16.7 ms.
 - **The recommendation stays a live cap of 1000.** It keeps the worst frame at about 16 ms even with 8 times the debris.
 - These runs are faster overall than the Milestone 2 numbers because the camera faces the building from close range, so far less of the city is drawn.
+
+# Response force and rival (Milestone 3B)
+
+Measured on the same machine on 2026-11-11, Windows **development build**, 1600×900, debris live cap 1000.
+
+The benchmark adds `-tolive-units N`. It hosts and spawns N response units close by: 1 anti-god weapon, 30% gunships, the rest police drones. The units all fight the player, and the AI rival is present (solo). After 10 s of fighting it measures 5 s ("fight"), then destroys the whole building and records 15 s with everything still fighting.
+
+```bash
+Builds/Windows/ToLive.exe -tolive-bench -tolive-cap 1000 -tolive-units 10 -tolive-out bench-units.csv -screen-fullscreen 0 -screen-width 1600 -screen-height 900
+```
+
+In the Editor: `DevProbe.StartBenchmark(1000, 1, false, 10)`.
+
+| units requested | peak alive | fight avg ms | collapse avg ms | collapse fps | first-3 s median ms | p99 ms | worst frame ms |
+|---|---|---|---|---|---|---|---|
+| 0 (rival only) | 0 | 3.84 | 3.93 | 254 | 3.55 | 10.43 | 21.0 |
+| 6 | 8 | 3.33 | 3.84 | 261 | 3.78 | 10.38 | 47.1 |
+| 10 | 10 | 3.35 | 3.56 | 281 | 3.13 | 9.48 | 20.8 |
+| 16 | 16 | 3.78 | 3.99 | 250 | 3.61 | 10.62 | 23.6 |
+| 24 | 24 | 3.76 | 3.16 | 317 | 4.17 | 7.28 | 34.5 |
+| 32 | 32 | 3.40 | 3.49 | 287 | 2.77 | 7.78 | 20.6 |
+
+(The 6-unit run peaked at 8 because the rival's own destruction raised heat and a police wave arrived.)
+
+**Bandwidth** (Netcode's `GhostMetricsMonitor` snapshot metrics, received by a client in the Editor, `DevProbe.StartNetSample`):
+
+| Scene | avg snapshot | worst snapshot |
+|---|---|---|
+| 2 players + rival, no units | 64 B | 190 B |
+| 10 units + rival + 2 players, rockets flying | 185 B (≈11 KB/s at 60 snapshots/s) | 509 B |
+| 32 units + rival + 1 player | 469 B (≈28 KB/s) | 1,520 B |
+
+At 10 units, police drones were the largest share (~75 B) because they strafe constantly, then gunships (~35 B) and rockets (~26 B). The anti-god weapon (~14 B) and the opposition state (~5 B) are small.
+
+**What the numbers say, and the chosen caps.**
+
+- **Frame time isn't the limit.** From 0 to 32 units, the frame cost stays within run-to-run noise (3–4 ms average). The worst frames come from the collapse, not the units. Unit AI, hit checks and rockets are cheap at this scale.
+- **Bandwidth and readability are the limits.** At 32 units the worst snapshot is larger than one packet (about 1,400 B), and the sky is too busy to read the telegraphs.
+- **Defaults:** police 6, gunships 3, anti-god 1, **total 10**. That keeps snapshots around 185 B (worst ~510 B), so there is room for the crowds of milestone 4. The measured headroom allows raising the total to about 16–20 if fights feel thin.
+- **Projectiles:** tracers cost nothing extra (they are a few fields on the unit's ghost). Rockets are cheap ghosts because only a handful are alive at once.

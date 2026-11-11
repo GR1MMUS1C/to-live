@@ -22,7 +22,7 @@ namespace ToLive.EditorTools
     /// prefab, the grey-box district subscene, the main scene) is generated here, so it can be
     /// rebuilt at any time from the Tools > To Live menu.
     /// </summary>
-    public static class ToLiveSetup
+    public static partial class ToLiveSetup
     {
         const string Root = "Assets/_Project";
         const string MaterialsDir = Root + "/Materials";
@@ -51,6 +51,7 @@ namespace ToLive.EditorTools
             CreateMaterials();
             CreatePlayerPrefab();
             CreateCombatPrefabs();
+            CreateOppositionPrefabs();
             GenerateDistrictScene();
             CreateMainScene();
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(MainScenePath, true) };
@@ -67,6 +68,7 @@ namespace ToLive.EditorTools
             CreateMaterials();
             if (AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath) == null) CreatePlayerPrefab();
             CreateCombatPrefabs();
+            CreateOppositionPrefabs();
             GenerateDistrictScene();
             if (File.Exists(MainScenePath)) EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
             Debug.Log("[ToLive] District regenerated.");
@@ -339,6 +341,8 @@ namespace ToLive.EditorTools
             new GameObject("Power Config").AddComponent<ToLive.Power.PowerConfigAuthoring>();
             var debrisConfig = new GameObject("Debris Config");
             debrisConfig.AddComponent<ToLive.Destruction.DebrisConfigAuthoring>().DebrisPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DebrisPrefabPath);
+
+            AddOppositionObjects();
 
             var flightConfig = new GameObject("Flight Config");
             flightConfig.AddComponent<FlightConfigAuthoring>();

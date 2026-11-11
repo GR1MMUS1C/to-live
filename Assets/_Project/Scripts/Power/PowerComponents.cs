@@ -32,6 +32,7 @@ namespace ToLive.Power
         [GhostField] public byte RitualHoldTicks;                   // how long the ritual input has been held
         [GhostField(Quantization = 100)] public float BeamEnergy;   // 0..1
         [GhostField] public byte Erupted;                           // eruption already happened this ritual
+        [GhostField] public uint SuppressedUntilTick;               // anti-god beam: no surge meter gain until this tick
     }
 
     /// <summary>Beam and grab state (predicted, like CombatState).</summary>

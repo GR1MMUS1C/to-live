@@ -25,6 +25,8 @@ namespace ToLive.UI
         public static string LastResult { get; private set; } = "";
         /// <summary>Benchmark the transformation instead of the F9 stress: ritual next to the building.</summary>
         public static bool Ritual;
+        /// <summary>Milestone 3B: spawn this many response units (plus the rival) before the collapse.</summary>
+        public static int Units;
 
         void Start()
         {
@@ -36,6 +38,7 @@ namespace ToLive.UI
             var mult = int.TryParse(Arg(args, "-tolive-mult"), out var m) ? m : 1;
             var output = Arg(args, "-tolive-out") ?? Path.Combine(Application.dataPath, "..", "bench.csv");
             Ritual = args.Contains("-tolive-ritual");
+            Units = int.TryParse(Arg(args, "-tolive-units"), out var u) ? u : 0;
             StartCoroutine(Run(cap, output, quitWhenDone: true, mult));
         }
 
@@ -52,9 +55,10 @@ namespace ToLive.UI
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         }
 
-        public static void StartInEditor(int cap, string output, int mult = 1, bool ritual = false)
+        public static void StartInEditor(int cap, string output, int mult = 1, bool ritual = false, int units = 0)
         {
             Ritual = ritual;
+            Units = units;
             var host = FindAnyObjectByType<PerfBenchmark>();
             if (host != null && !Running) host.StartCoroutine(host.Run(cap, output, quitWhenDone: false, mult));
         }
@@ -81,7 +85,15 @@ namespace ToLive.UI
             AimAtBuilding();
 
             var idle = new List<float>();
-            yield return Measure(idle, 3f);
+            if (Units > 0)
+            {
+                // the response force (and the rival, solo) arrive and fight us; "idle" is then the fight
+                DebugCommands.Send(DebugCommandRequest.BenchUnits, (byte)Mathf.Clamp(Units, 1, 255));
+                yield return new WaitForSeconds(10f);
+                AimAtBuilding();
+                yield return Measure(idle, 5f);
+            }
+            else yield return Measure(idle, 3f);
 
             if (Ritual)
             {
@@ -95,7 +107,7 @@ namespace ToLive.UI
             else DebugCommands.Send(DebugCommandRequest.DestroyBuilding);
             var frames = new List<float>();
             var collapsed = false;
-            int peakLive = 0, peakTotal = 0;
+            int peakLive = 0, peakTotal = 0, peakUnits = 0;
             var t = 0f;
             while (t < 15f)
             {
@@ -108,6 +120,7 @@ namespace ToLive.UI
                 t += Time.unscaledDeltaTime;
                 peakLive = Mathf.Max(peakLive, DebrisSystem.LiveDebris);
                 peakTotal = Mathf.Max(peakTotal, DebrisSystem.TotalDebris);
+                peakUnits = Mathf.Max(peakUnits, ToLive.Opposition.OppositionView.Units);
             }
 
             var first3 = Take(frames, 3000f);
@@ -117,13 +130,13 @@ namespace ToLive.UI
                 Avg(idle).ToString("0.00"), Avg(frames).ToString("0.00"), (1000f / Avg(frames)).ToString("0.0"),
                 Pct(first3, 0.5f).ToString("0.00"), Pct(frames, 0.99f).ToString("0.00"), frames.Max().ToString("0.00"),
                 peakLive, peakTotal, DebrisSystem.BrokenChunks, DebrisSystem.TotalDebris,
-                Quote(SystemInfo.processorType), Quote(SystemInfo.graphicsDeviceName));
+                Quote(SystemInfo.processorType), Quote(SystemInfo.graphicsDeviceName), Units, peakUnits, ToLive.Opposition.OppositionView.RivalPresent ? 1 : 0);
             try
             {
                 var exists = File.Exists(output);
                 using var w = new StreamWriter(output, append: true);
                 if (!exists)
-                    w.WriteLine("time,target,liveCap,pieceMultiplier,resolution,idleAvgMs,destroyAvgMs,destroyAvgFps,first3sMedianMs,p99Ms,maxMs,peakLiveDebris,peakTotalDebris,brokenChunks,debrisAtEnd,cpu,gpu");
+                    w.WriteLine("time,target,liveCap,pieceMultiplier,resolution,idleAvgMs,destroyAvgMs,destroyAvgFps,first3sMedianMs,p99Ms,maxMs,peakLiveDebris,peakTotalDebris,brokenChunks,debrisAtEnd,cpu,gpu,unitsRequested,peakUnits,rival");
                 w.WriteLine(LastResult);
             }
             catch (Exception e) { Debug.LogError($"[ToLive] Could not write {output}: {e.Message}"); }
@@ -133,6 +146,7 @@ namespace ToLive.UI
             DebrisSystem.LiveCapOverride = -1;
             DebrisSystem.SpawnMultiplier = 1;
             DebrisSystem.TotalCapOverride = -1;
+            if (Units > 0) DebugCommands.Send(DebugCommandRequest.ClearUnits);
             Running = false;
             if (quitWhenDone) Application.Quit();
         }

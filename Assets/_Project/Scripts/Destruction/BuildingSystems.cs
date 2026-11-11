@@ -57,11 +57,14 @@ namespace ToLive.Destruction
             if (command.Rebuild != 0 || command.DestroyAll != 0)
                 SystemAPI.SetComponent(graphEntity, new BuildingCommand());
 
+            var lastInstigator = Entity.Null; // the DestroyAll debug path has none: it stays heat-free
             foreach (var r in requests)
             {
                 if (r.Chunk < 0 || r.Chunk >= count || bs.IsBroken(r.Chunk)) continue;
+                lastInstigator = r.Instigator;
                 bs.SetBroken(r.Chunk);
                 ToLive.Power.SurgeFuel.CreditChunk(ref state, r.Instigator);
+                ToLive.Opposition.HeatSource.ChunkBroken(state.EntityManager, r.Instigator); // destruction raises heat
                 bs.LastImpactTick = tick;
                 bs.LastImpactVelocity = r.Velocity;
                 changed = true;
@@ -69,13 +72,18 @@ namespace ToLive.Destruction
             requests.Clear();
 
             if (changed && command.Rebuild == 0)
-                CollapseUnsupported(ref bs, SystemAPI.GetBuffer<ChunkNode>(graphEntity), SystemAPI.GetBuffer<ChunkNeighbor>(graphEntity), count);
+            {
+                var collapsed = CollapseUnsupported(ref bs, SystemAPI.GetBuffer<ChunkNode>(graphEntity), SystemAPI.GetBuffer<ChunkNeighbor>(graphEntity), count);
+                // whoever broke the supports this tick is responsible for what falls (surge fuel unchanged)
+                if (collapsed > 0 && lastInstigator != Entity.Null)
+                    ToLive.Opposition.HeatSource.ChunksCollapsed(state.EntityManager, lastInstigator, collapsed);
+            }
 
             if (changed) bsRef.ValueRW = bs;
         }
 
         /// <summary>Flood-fill from grounded intact chunks; everything not reached falls.</summary>
-        static void CollapseUnsupported(ref BuildingState bs, DynamicBuffer<ChunkNode> nodes, DynamicBuffer<ChunkNeighbor> neighbors, int count)
+        static int CollapseUnsupported(ref BuildingState bs, DynamicBuffer<ChunkNode> nodes, DynamicBuffer<ChunkNeighbor> neighbors, int count)
         {
             var supported = new NativeArray<bool>(count, Allocator.Temp);
             var queue = new NativeQueue<int>(Allocator.Temp);
@@ -106,6 +114,7 @@ namespace ToLive.Destruction
                 collapsed++;
             }
             if (collapsed > 0) Debug.Log($"[ToLive] Structural collapse: {collapsed} unsupported chunks fell");
+            return collapsed;
         }
     }
 

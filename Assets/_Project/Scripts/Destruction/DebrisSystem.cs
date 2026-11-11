@@ -44,6 +44,14 @@ namespace ToLive.Destruction
         public UnityEngine.Color Tint;
     }
 
+    /// <summary>Cosmetic wreck of a destroyed response unit (filled by the OppositionPresenter on the client).</summary>
+    public struct WreckFx
+    {
+        public float3 Position, Velocity;
+        public int Count;
+        public float Size;
+    }
+
     /// <summary>
     /// CLIENT ONLY. Spawns layer-2 debris for chunks that just broke, puts settled pieces to sleep
     /// (they stop simulating and become plain rendered boxes), and enforces the live/total caps.
@@ -62,6 +70,7 @@ namespace ToLive.Destruction
         public static int TotalCapOverride = -1;
         public static int SpawnMultiplier = 1;
         /// <summary>Ritual debris effects requested this frame (client cosmetic).</summary>
+        public static readonly System.Collections.Generic.List<WreckFx> Wrecks = new System.Collections.Generic.List<WreckFx>();
         public static readonly System.Collections.Generic.List<RitualDebrisFx> RitualFx = new System.Collections.Generic.List<RitualDebrisFx>();
 
         int m_Order;
@@ -113,6 +122,8 @@ namespace ToLive.Destruction
                 Spawn(pending, cfg, graph, hasState ? bs.LastImpactVelocity : float3.zero);
             }
 
+            if (Wrecks.Count > 0 && cfg.Prefab != Entity.Null) SpawnWrecks(cfg);
+            Wrecks.Clear();
             UpdateSleepAndCaps(cfg);
             if (RitualFx.Count > 0 && cfg.Prefab != Entity.Null) ApplyRitualFx(cfg);
             RitualFx.Clear();
@@ -155,6 +166,35 @@ namespace ToLive.Destruction
                     em.AddComponentData(e, new PhysicsCollider { Value = collider });
                     em.AddComponentData(e, PhysicsMass.CreateDynamic(collider.Value.MassProperties, mass));
                     em.AddComponentData(e, new PhysicsVelocity { Linear = velocity, Angular = m_Random.NextFloat3(-3f, 3f) });
+                    em.AddComponentData(e, new PhysicsDamping { Linear = 0.05f, Angular = 0.2f });
+                    em.AddSharedComponent(e, new PhysicsWorldIndex(1));
+                    em.AddComponentData(e, new Debris { Order = m_Order++, Collider = collider, Size = size });
+                }
+            }
+        }
+
+        /// <summary>Destroyed units break into dynamic debris pieces (same caps as building debris).</summary>
+        void SpawnWrecks(in DebrisConfig cfg)
+        {
+            var em = EntityManager;
+            foreach (var w in Wrecks)
+            {
+                for (var i = 0; i < w.Count; i++)
+                {
+                    var size = new float3(m_Random.NextFloat(0.4f, 1f), m_Random.NextFloat(0.2f, 0.6f), m_Random.NextFloat(0.4f, 1.2f)) * w.Size;
+                    var pos = w.Position + m_Random.NextFloat3(-1f, 1f) * w.Size;
+                    var e = em.Instantiate(cfg.Prefab);
+                    em.SetComponentData(e, LocalTransform.FromPositionRotation(pos, quaternion.Euler(m_Random.NextFloat3(-3f, 3f))));
+                    em.AddComponentData(e, new PostTransformMatrix { Value = float4x4.Scale(size) });
+                    var collider = BoxCollider.Create(new BoxGeometry
+                    {
+                        Center = float3.zero, Orientation = quaternion.identity, Size = size,
+                        BevelRadius = math.min(0.05f, math.cmin(size) * 0.1f),
+                    }, CollisionFilter.Default);
+                    var velocity = w.Velocity * 0.5f + m_Random.NextFloat3Direction() * m_Random.NextFloat(4f, 12f) + new float3(0, 4f, 0);
+                    em.AddComponentData(e, new PhysicsCollider { Value = collider });
+                    em.AddComponentData(e, PhysicsMass.CreateDynamic(collider.Value.MassProperties, math.max(1f, size.x * size.y * size.z * cfg.Density)));
+                    em.AddComponentData(e, new PhysicsVelocity { Linear = velocity, Angular = m_Random.NextFloat3(-6f, 6f) });
                     em.AddComponentData(e, new PhysicsDamping { Linear = 0.05f, Angular = 0.2f });
                     em.AddSharedComponent(e, new PhysicsWorldIndex(1));
                     em.AddComponentData(e, new Debris { Order = m_Order++, Collider = collider, Size = size });

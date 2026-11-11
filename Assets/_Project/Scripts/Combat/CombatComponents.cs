@@ -75,6 +75,7 @@ namespace ToLive.Combat
     public struct DebugCommandRequest : IRpcCommand
     {
         public byte Command;
+        public byte Arg;                        // optional argument (e.g. unit count for BenchUnits)
         public const byte ResetDummyAndBuilding = 1;
         public const byte DestroyBuilding = 2;
         public const byte ToggleDummyGuard = 3;
@@ -84,5 +85,13 @@ namespace ToLive.Combat
         public const byte AlignmentUp = 7;      // toward dominance
         public const byte DummyRitual = 8;      // the dummy performs the ritual (copies sender's alignment)
         public const byte BenchRitualSetup = 9; // benchmark: put the sender next to the building with a full meter
+        // Milestone 3B: heat, response force, rival
+        public const byte HeatUp = 10;
+        public const byte HeatDown = 11;
+        public const byte ClearUnits = 12;
+        public const byte SpawnEachUnit = 13;
+        public const byte RivalToggle = 14;
+        public const byte RivalDifficulty = 15;
+        public const byte BenchUnits = 16;      // benchmark: spawn Arg response units near the sender and blame the humans
     }
 }

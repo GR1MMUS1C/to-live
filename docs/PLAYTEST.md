@@ -65,6 +65,11 @@ Pressing R3 for the ritual also toggles lock-on, and L3 is boost. That's harmles
 | F7 | Toggle your tier (1 or 2) |
 | [ and ] | Slide your alignment toward trust or toward dominance (0.25 per press) |
 | F8 | The training dummy performs the ritual, using your alignment and tier, so you can watch from outside |
+| Page Up / Page Down | Heat up or down one whole level (debug heat is blamed on you, so the army comes for you) |
+| Home | Spawn one of each response unit (police drone, gunship, anti-god weapon); they stay even at heat 0 |
+| End | Remove every response unit and rocket |
+| Insert | Rival on/off (overrides the "one human = rival" rule until you press it again) |
+| Delete | Cycle the rival's difficulty: easy, normal, hard (shown on its name plate) |
 
 ### Gears
 
@@ -137,6 +142,41 @@ To tune:
 - All transformation gameplay numbers are on **Power Config** (District subscene).
 - The look is on **Power Look** in `Main.unity`: energy colours, halo size and speed, glow, wash and the ritual effects.
 - The ritual camera settings are on **Flight Camera Rig**.
+
+## 1d. Milestone 3 play script (about 10 minutes)
+
+Do this solo (one human): the **rival** is only present when one human is connected.
+
+**Part 1: transformation (2 minutes).** Follow 1c steps 1–6 once: fill the meter (F4 is fine), ritual, eruption, surge, burnout.
+
+**Part 2: heat and the response force (4 minutes).** Heat is the pip row top right: CALM, POLICE, MILITARY, ANTI-GOD.
+
+1. **Raise heat by destruction.** Smash through the breakable building (boost into it), beam it, throw the dummy through it. Every broken chunk adds heat, and an eruption adds a lot. Watch the pips fill.
+2. **Level 1: police.** Small grey drones with a blue light bar fly in from the district edge, keep their distance and fire yellow tracers. Each hit is tiny. Lock on (R3) and punch one, or grab and throw it into the building or into another drone.
+   - A thrown unit is a projectile: it smashes chunks and damages whatever it hits.
+3. **Level 2: military.** Gunships with rotor discs keep higher and further away and fire **slow, visible rockets** with smoke trails. Dodge them sideways. A hit launches you, and rockets that miss blow chunks out of the building.
+   - Shortcut: **Page Up** twice.
+4. **Level 3: the anti-god weapon.** A big dark sphere with a ring and a long barrel. When it targets you:
+   - a thin red line appears from its barrel, and a red **ANTI-GOD WEAPON CHARGING** warning shows (plus an arrow at the screen edge if it is off screen);
+   - the line flickers and thickens; about half a second before it fires it turns solid and bright (**LOCKED - BREAK LINE OF SIGHT**) and stops following you;
+   - **move sideways or put a building between you and it.** If it hits, you lose a big chunk of power, get blasted backwards, and the HUD shows **SURGE SUPPRESSED** (your meter can't fill for a few seconds).
+   - Or rush it: it is slow and has a lot of power, but it can be launched, beamed and thrown like anything else.
+   - Shortcut: **Page Up** three times.
+5. **Decay.** Stop breaking things. After about 15 s of quiet the pips drain; units whose level is gone fly back to the edge and leave, once no god is still wanted (the units remember who raised heat for about 20 s).
+6. Destroyed units fall as dark wrecks and break into debris when they land.
+
+**Part 3: the rival (4 minutes).** A deep violet character with a crimson (dominance) halo, **VANTA**. Its name plate, power bar and surge state appear when you lock on to it or get within 60 m.
+
+1. Let it come to you. It circles at about 12 m, then dashes in for light chains. Guard (LB) when it attacks; it punishes your guard with a charged heavy sometimes.
+2. Attack it: it guards some of your chains (on normal, a bit under half, and never instantly).
+3. At range it fires its beam; break line of sight or close the gap.
+4. If you are staggered next to it, it may grab and throw you, aiming at the building. Launch it yourself and finish it (dash + X with the camera on the building) to drive it through the building.
+5. When its meter fills, or when it's losing, it performs the ritual: you see its halo, eruption and surge from outside. Its surge makes it much stronger for 20 s; get away or guard.
+6. When it is knocked out, **RIVAL DOWN** is announced; it returns after about 12 s (**THE RIVAL RETURNS**).
+7. Three-way fights: the rival raises heat too, and the army shoots any god that raised heat, so units will attack it as well, and it fights back.
+8. Try **Delete** for easy or hard. Normal should be beatable if you guard its chains and punish after its heavy.
+
+To tune: heat and units are on **Opposition Config**, the rival's three difficulty presets and ranges on **Rival Config** (both in the District subscene).
 
 ## 2. Two players on one PC (Multiplayer Play Mode)
 

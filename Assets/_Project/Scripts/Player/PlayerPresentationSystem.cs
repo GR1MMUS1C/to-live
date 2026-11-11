@@ -38,6 +38,7 @@ namespace ToLive.Player
             var owners = GetComponentLookup<GhostOwner>(true);
             var combats = GetComponentLookup<ToLive.Combat.CombatState>(true);
             var fxs = GetComponentLookup<ToLive.Combat.HitFxState>(true);
+            var kinds = GetComponentLookup<ToLive.Opposition.CharacterKind>(true);
             var now = SystemAPI.Time.ElapsedTime;
             foreach (var (visual, entity) in SystemAPI.Query<RefRO<PlayerVisual>>().WithEntityAccess())
             {
@@ -45,6 +46,8 @@ namespace ToLive.Player
                 var c = owners.HasComponent(entity)
                     ? s_Palette[(math.max(owners[entity].NetworkId, 1) - 1) % s_Palette.Length]
                     : new float4(0.85f, 0.18f, 0.15f, 1f); // training dummy
+                if (kinds.HasComponent(entity) && kinds[entity].Kind == ToLive.Opposition.CharacterKind.Rival)
+                    c = new float4(0.42f, 0.1f, 0.62f, 1f); // the AI rival: deep violet
                 if (combats.HasComponent(entity) && combats[entity].Action == ToLive.Combat.CombatAction.KnockedOut)
                     c = new float4(0.3f, 0.3f, 0.32f, 1f);
                 if (fxs.HasComponent(entity) && fxs[entity].FlashUntil > now)
