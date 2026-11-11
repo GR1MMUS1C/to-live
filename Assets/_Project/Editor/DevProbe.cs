@@ -420,6 +420,45 @@ namespace ToLive.EditorTools
             return "no local player";
         }
 
+        /// <summary>Server: damage the dummy through the shared Damage path (knocks out at zero).</summary>
+        public static string DamageDummy(float amount)
+        {
+            foreach (var world in World.All)
+            {
+                if (!world.IsCreated || !world.IsServer()) continue;
+                var em = world.EntityManager;
+                using var tq = em.CreateEntityQuery(ComponentType.ReadOnly<NetworkTime>());
+                var tick = tq.GetSingleton<NetworkTime>().ServerTick.TickIndexForValidTick;
+                using var q = em.CreateEntityQuery(ComponentType.ReadWrite<ToLive.Combat.CombatState>(), ComponentType.ReadOnly<ToLive.Combat.TrainingDummy>());
+                using var es = q.ToEntityArray(Allocator.Temp);
+                foreach (var e in es)
+                {
+                    var c = em.GetComponentData<ToLive.Combat.CombatState>(e);
+                    var ko = ToLive.Combat.Damage.Apply(ref c, amount, tick, ToLive.Combat.Damage.TickRate(em), ToLive.Combat.Damage.RespawnDelay(em));
+                    em.SetComponentData(e, c);
+                    return $"dummy power {c.Power:0} knockedOut={ko}";
+                }
+            }
+            return "no dummy";
+        }
+
+        /// <summary>Server: override the fuel rates in the baked PowerConfig (test only).</summary>
+        public static string SetFuelRates(float dealt, float taken)
+        {
+            foreach (var world in World.All)
+            {
+                if (!world.IsCreated || !world.IsServer()) continue;
+                var em = world.EntityManager;
+                using var q = em.CreateEntityQuery(ComponentType.ReadWrite<ToLive.Power.PowerConfig>());
+                var e = q.GetSingletonEntity();
+                var cfg = em.GetComponentData<ToLive.Power.PowerConfig>(e);
+                cfg.FuelPerDamageDealt = dealt; cfg.FuelPerDamageTaken = taken;
+                em.SetComponentData(e, cfg);
+                return $"fuel rates dealt={dealt} taken={taken}";
+            }
+            return "no server";
+        }
+
         public static string SetDummyPower(float power)
         {
             foreach (var world in World.All)

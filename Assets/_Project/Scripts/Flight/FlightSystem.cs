@@ -129,17 +129,9 @@ namespace ToLive.Flight
 
                 if (damage > 0f && c.Action != CombatAction.KnockedOut)
                 {
-                    c.Power = math.max(0f, c.Power - damage);
-                    if (c.Power <= 0f)
-                    {
-                        // Same knock-out transition as a strike (CombatSystem.ApplyHits). It runs in the
-                        // predicted loop on client and server alike, from the same predicted inputs.
-                        c.Action = CombatAction.KnockedOut;
-                        c.ActionEndTick = tick + CombatSystem.Ticks(combatCfg.RespawnDelay, rate);
-                        c.Ballistic = 1;
-                        c.LockTarget = Entity.Null;
-                        c.ComboStep = 0; c.QueuedLight = 0; c.Charge = 0f;
-                    }
+                    // Shared damage path: knocks out at zero. Runs in the predicted loop on client and
+                    // server alike, from the same predicted inputs.
+                    Damage.Apply(ref c, damage, tick, rate, combatCfg.RespawnDelay);
                     combat.ValueRW = c;
                 }
 

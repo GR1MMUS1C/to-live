@@ -165,7 +165,7 @@ namespace ToLive.Combat
                     p.Meter = 1f;
                     p.Phase = ToLive.Power.SurgePhase.Ritual;
                     p.PhaseStartTick = tick;
-                    p.PhaseEndTick = tick + CombatSystem.Ticks(cfg.RitualTime, 60);
+                    p.PhaseEndTick = tick + CombatSystem.Ticks(cfg.RitualTime, Damage.TickRate(state.EntityManager));
                     p.Erupted = 0;
                     power.ValueRW = p;
                 }

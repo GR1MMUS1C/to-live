@@ -133,7 +133,11 @@ namespace ToLive.Power
                 // ---------- Grab (holder side) ----------
                 if (input.Grab.IsSet && !locked && !busy)
                 {
-                    if (m.Carrying != Entity.Null) m.Throw = 1; // server launches the victim
+                    if (m.Carrying != Entity.Null)
+                    {
+                        // debounce: the press that started the grab must not also throw
+                        if (tick - m.GrabStartTick >= CombatSystem.Ticks(0.2f, rate)) m.Throw = 1; // server launches the victim
+                    }
                     else if (c.Action == CombatAction.None || c.Action == CombatAction.Dash)
                     {
                         var pos = xf.ValueRO.Position;

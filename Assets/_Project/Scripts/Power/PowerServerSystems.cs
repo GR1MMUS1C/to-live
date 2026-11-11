@@ -27,6 +27,16 @@ namespace ToLive.Power
             em.GetBuffer<SurgeFuelEvent>(q.GetSingletonEntity()).Add(new SurgeFuelEvent { Target = target, Amount = amount });
         }
 
+        /// <summary>Fuel for a hit, at the configured rates (same as melee): attacker gets dealt, victim gets taken.</summary>
+        public static void AddDamage(EntityManager em, Entity attacker, Entity victim, float damage)
+        {
+            using var q = em.CreateEntityQuery(ComponentType.ReadOnly<PowerConfig>());
+            if (q.CalculateEntityCount() != 1) return;
+            var cfg = q.GetSingleton<PowerConfig>();
+            Add(em, attacker, damage * cfg.FuelPerDamageDealt);
+            Add(em, victim, damage * cfg.FuelPerDamageTaken);
+        }
+
         /// <summary>A chunk broke: credit whoever launched the body that smashed it (or the body itself).</summary>
         public static void CreditChunk(ref SystemState state, Entity instigator)
         {
@@ -173,8 +183,12 @@ namespace ToLive.Power
             uint tick, bool launch, in CombatConfig combatCfg, float dt)
         {
             var em = state.EntityManager;
+            var rate = Damage.TickRate(em);
             using var q = em.CreateEntityQuery(ComponentType.ReadWrite<CombatState>(), ComponentType.ReadWrite<FlightState>(), ComponentType.ReadOnly<LocalTransform>());
             using var es = q.ToEntityArray(Allocator.Temp);
+            var cfgQ = em.CreateEntityQuery(ComponentType.ReadOnly<PowerConfig>());
+            var hasPowerCfg = cfgQ.CalculateEntityCount() == 1;
+            var powerCfg = hasPowerCfg ? cfgQ.GetSingleton<PowerConfig>() : default;
             foreach (var e in es)
             {
                 if (e == caster) continue;
@@ -189,22 +203,19 @@ namespace ToLive.Power
                 if (c.Action == CombatAction.KnockedOut) continue;
                 if (launch)
                 {
-                    c.Power = math.max(0f, c.Power - damage * falloff);
+                    var defense = hasPowerCfg && em.HasComponent<PowerState>(e) ? powerCfg.Mods(em.GetComponentData<PowerState>(e)).Defense : 1f;
+                    var dealt = damage * falloff / defense;
+                    // the shockwave launches everyone, also a held victim (GrabServerSystem then releases it)
                     c.Action = CombatAction.Launched;
                     c.Ballistic = 1;
                     c.ActionStartTick = tick;
-                    c.ActionEndTick = tick + CombatSystem.Ticks(1.2f, 60);
+                    c.ActionEndTick = tick + CombatSystem.Ticks(1.2f, rate);
                     c.LastHitTick = tick;
                     c.LastHitStrength = speed * falloff;
                     f.Velocity = dir * speed * (0.5f + 0.5f * falloff);
-                    if (c.Power <= 0f)
-                    {
-                        c.Action = CombatAction.KnockedOut;
-                        c.ActionEndTick = tick + CombatSystem.Ticks(combatCfg.RespawnDelay > 0 ? combatCfg.RespawnDelay : 4f, 60);
-                        c.LockTarget = Entity.Null;
-                    }
+                    Damage.Apply(ref c, dealt, tick, rate, combatCfg.RespawnDelay); // knocks out at zero
                     if (em.HasComponent<LastAttacker>(e)) em.SetComponentData(e, new LastAttacker { Value = caster });
-                    SurgeFuel.Add(em, caster, damage * falloff);
+                    SurgeFuel.AddDamage(em, caster, e, dealt);
                 }
                 else
                 {
@@ -255,6 +266,8 @@ namespace ToLive.Power
 
             var hits = new NativeList<ColliderCastHit>(64, Allocator.Temp);
             var fuel = new NativeList<(Entity e, float amount)>(Allocator.Temp);
+            var rate = Damage.TickRate(state.EntityManager);
+            var respawnDelay = Damage.RespawnDelay(state.EntityManager);
             foreach (var (caster, origin, dir, mods) in beams)
             {
                 // length: up to the first unbreakable hit; chunks along the way break
@@ -281,23 +294,17 @@ namespace ToLive.Power
                     if (e == caster || combat.ValueRO.Action == CombatAction.KnockedOut) continue;
                     var to = xf.ValueRO.Position - origin;
                     var along = math.dot(to, dir);
-                    if (along < 0f || along > length) continue;
+                    if (along < 0f || along > length + cfg.BeamRadius * 2f) continue; // the beam's width reaches past where it stops
                     if (math.length(to - dir * along) > cfg.BeamRadius * 1.8f) continue;
                     var defense = cfg.Mods(power.ValueRO).Defense;
                     var dmg = cfg.BeamDamagePerSecond * mods.Beam * dt / defense;
                     var c = combat.ValueRO;
-                    c.Power = math.max(0f, c.Power - dmg);
                     if (tick % 6 == 0) { c.LastHitTick = tick; c.LastHitStrength = 15f; }
-                    if (c.Power <= 0f && c.Action != CombatAction.KnockedOut)
-                    {
-                        c.Action = CombatAction.KnockedOut;
-                        c.ActionEndTick = tick + CombatSystem.Ticks(4f, 60);
-                        c.LockTarget = Entity.Null;
-                    }
+                    Damage.Apply(ref c, dmg, tick, rate, respawnDelay); // shared path: knocks out at zero
                     combat.ValueRW = c;
                     flight.ValueRW.Velocity = math.lerp(flight.ValueRO.Velocity, dir * cfg.BeamPush * mods.Knockback, 0.25f);
-                    fuel.Add((caster, dmg));
-                    fuel.Add((e, dmg * 0.6f));
+                    fuel.Add((caster, dmg * cfg.FuelPerDamageDealt)); // configured rates, same as melee
+                    fuel.Add((e, dmg * cfg.FuelPerDamageTaken));
                 }
             }
             foreach (var (e, amount) in fuel) SurgeFuel.Add(state.EntityManager, e, amount);
@@ -342,42 +349,74 @@ namespace ToLive.Power
                 var hx = em.GetComponentData<LocalTransform>(holder);
                 var hf = em.GetComponentData<FlightState>(holder);
 
-                // start holding
-                if (vm.GrabbedBy != holder)
+                var rate = Damage.TickRate(em);
+                var respawnDelay = Damage.RespawnDelay(em);
+                var holding = vm.GrabbedBy == holder;
+
+                if (!holding)
                 {
-                    if (vc.Action == CombatAction.KnockedOut || vc.Action == CombatAction.Grabbed) { m.Carrying = Entity.Null; em.SetComponentData(holder, m); continue; }
+                    // start holding, but never grab a knocked-out / already-held victim, and a
+                    // knocked-out holder can't grab
+                    if (vc.Action == CombatAction.KnockedOut || vc.Action == CombatAction.Grabbed || hc.Action == CombatAction.KnockedOut)
+                    {
+                        m.Carrying = Entity.Null; m.Throw = 0;
+                        em.SetComponentData(holder, m);
+                        continue;
+                    }
                     vc.Action = CombatAction.Grabbed; vc.ActionStartTick = tick; vc.LockTarget = Entity.Null;
                     vm.GrabbedBy = holder; vm.GrabStartTick = tick; vm.Mash = 0; vm.Beam = 0;
+                }
+                else if (vc.Action != CombatAction.Grabbed)
+                {
+                    // Re-checked every hold update: the victim left the hold through another path
+                    // (knocked out, launched by an eruption, ...). Release it and keep its state:
+                    // never overwrite KnockedOut with Launched/Grabbed.
+                    vm.GrabbedBy = Entity.Null; vm.Mash = 0;
+                    m.Carrying = Entity.Null; m.Throw = 0;
+                    em.SetComponentData(victim, vm);
+                    em.SetComponentData(holder, m);
+                    continue;
                 }
 
                 var facing = math.mul(quaternion.RotateY(math.radians(hf.Yaw)), new float3(0, 0, 1));
                 var holdPos = hx.Position + facing * 2.2f + new float3(0, 0.4f, 0);
                 var released = false;
 
-                if (m.Throw != 0 || hc.Action == CombatAction.KnockedOut)
+                if (hc.Action == CombatAction.KnockedOut)
+                {
+                    // holder knocked out: drop the victim (a short stagger), no throw
+                    vc.Action = CombatAction.Launched; vc.Ballistic = 2;
+                    vc.ActionStartTick = tick; vc.ActionEndTick = tick + CombatSystem.Ticks(0.3f, rate);
+                    vf.Velocity = new float3(0, 4f, 0);
+                    released = true;
+                    Debug.Log($"[ToLive] {holder} was knocked out and dropped {victim}");
+                }
+                else if (m.Throw != 0)
                 {
                     // THROW in the holder's aim direction
                     var hp = em.HasComponent<PowerState>(holder) ? em.GetComponentData<PowerState>(holder) : default;
+                    var vp = em.HasComponent<PowerState>(victim) ? em.GetComponentData<PowerState>(victim) : default;
                     var mods = cfg.Mods(hp);
                     var input = em.HasComponent<PlayerInput>(holder) ? em.GetComponentData<PlayerInput>(holder) : new PlayerInput { LookYaw = hf.Yaw, LookPitch = hf.Pitch };
                     var aim = math.mul(quaternion.EulerZXY(math.radians(new float3(input.LookPitch, input.LookYaw, 0f))), new float3(0, 0, 1));
                     vc.Action = CombatAction.Launched; vc.Ballistic = 0;
-                    vc.ActionStartTick = tick; vc.ActionEndTick = tick + CombatSystem.Ticks(cfg.ThrowDuration, 60);
-                    var dmg = cfg.ThrowDamage * mods.Damage;
-                    vc.Power = math.max(0f, vc.Power - dmg);
+                    vc.ActionStartTick = tick; vc.ActionEndTick = tick + CombatSystem.Ticks(cfg.ThrowDuration, rate);
                     vc.LastHitTick = tick; vc.LastHitStrength = cfg.ThrowSpeed;
                     vf.Velocity = aim * cfg.ThrowSpeed * mods.Knockback;
+                    var dmg = cfg.ThrowDamage * mods.Damage / cfg.Mods(vp).Defense;
+                    // shared damage path: at zero the victim is knocked out but keeps flying (Ballistic = 1)
+                    if (Damage.Apply(ref vc, dmg, tick, rate, respawnDelay)) Debug.Log($"[ToLive] Throw knocked out {victim}");
                     em.SetComponentData(victim, new LocalTransform { Position = holdPos + aim * 1.5f, Rotation = em.GetComponentData<LocalTransform>(victim).Rotation, Scale = 1f });
                     if (em.HasComponent<LastAttacker>(victim)) em.SetComponentData(victim, new LastAttacker { Value = holder });
-                    SurgeFuel.Add(em, holder, dmg);
+                    SurgeFuel.AddDamage(em, holder, victim, dmg); // configured rates
                     released = true;
                     Debug.Log($"[ToLive] Throw by {holder}");
                 }
-                else if (vm.Mash >= cfg.EscapeMashes && tick - vm.GrabStartTick >= CombatSystem.Ticks(cfg.EscapeAfter, 60))
+                else if (vm.Mash >= cfg.EscapeMashes && tick - vm.GrabStartTick >= CombatSystem.Ticks(cfg.EscapeAfter, rate))
                 {
                     // victim broke free
                     vc.Action = CombatAction.Launched; vc.Ballistic = 2;
-                    vc.ActionStartTick = tick; vc.ActionEndTick = tick + CombatSystem.Ticks(0.3f, 60);
+                    vc.ActionStartTick = tick; vc.ActionEndTick = tick + CombatSystem.Ticks(0.3f, rate);
                     vf.Velocity = facing * 15f + new float3(0, 6, 0);
                     released = true;
                     Debug.Log($"[ToLive] {victim} broke free");

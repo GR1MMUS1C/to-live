@@ -305,7 +305,6 @@ namespace ToLive.Combat
                     victimInRitual = vp.Phase == ToLive.Power.SurgePhase.Ritual;
                 }
 
-                v.Power = math.max(0f, v.Power - damage);
                 v.LastHitTick = tick;
                 v.LastHitStrength = speed;
                 v.HitStopUntilTick = tick + Ticks(cfg.HitStopTime, rate);
@@ -322,13 +321,7 @@ namespace ToLive.Combat
                 fuel.Add((hit.Attacker, damage * (hasPowerCfg ? powerCfg.FuelPerDamageDealt : 1f)));
                 fuel.Add((hit.Victim, damage * (hasPowerCfg ? powerCfg.FuelPerDamageTaken : 0.6f)));
 
-                if (v.Power <= 0f)
-                {
-                    v.Action = CombatAction.KnockedOut;
-                    v.ActionEndTick = tick + Ticks(cfg.RespawnDelay, rate);
-                    v.Ballistic = 1;
-                    v.LockTarget = Entity.Null;
-                }
+                Damage.Apply(ref v, damage, tick, rate, cfg.RespawnDelay); // knocks out at zero (keeps the launch velocity)
 
                 combats[hit.Victim] = v;
                 flights[hit.Victim] = vf;
