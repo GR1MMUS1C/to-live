@@ -29,6 +29,9 @@ namespace ToLive.Player
                 AddComponent<ToLive.Combat.CombatTarget>(entity);
                 AddBuffer<ToLive.Combat.PositionHistory>(entity);
                 AddComponent<ToLive.Combat.HitFxState>(entity);
+                AddComponent(entity, new ToLive.Power.PowerState { Tier = 1, BeamEnergy = 1f });
+                AddComponent<ToLive.Power.MoveState>(entity);
+                AddComponent<ToLive.Power.LastAttacker>(entity);
                 AddComponent(entity, new PlayerVisual
                 {
                     Body = authoring.Body != null ? GetEntity(authoring.Body, TransformUsageFlags.Dynamic) : Entity.Null,

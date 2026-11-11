@@ -24,7 +24,7 @@ namespace ToLive.Player
             m_Line.useWorldSpace = false;
             m_Line.positionCount = Segments;
             m_Line.widthMultiplier = 0.6f;
-            m_Line.material = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            m_Line.material = ToLive.Combat.FxMaterials.Unlit();
             m_Line.material.color = Color.white;
             SetRadius(1f);
         }

@@ -22,6 +22,12 @@ namespace ToLive.Combat
             OnImpact?.Invoke(position, kind);
         }
 
+        /// <summary>SFX hooks for the transformation: rising hum (progress 0..1) and the eruption.</summary>
+        public static event System.Action<float3, float> OnRitual;
+        public static event System.Action<float3> OnEruption;
+        public static void RaiseRitual(float3 position, float progress) => OnRitual?.Invoke(position, progress);
+        public static void RaiseEruption(float3 position) => OnEruption?.Invoke(position);
+
         public static void RaiseVictimHit(float3 position, float strength, bool involvesLocalPlayer)
         {
             if (involvesLocalPlayer) Shake = math.max(Shake, math.clamp(strength / 120f, 0.1f, 0.6f));

@@ -13,11 +13,12 @@ namespace ToLive.Combat
         public const byte Dash = 4;
         public const byte Launched = 5;     // knocked back / launched: reduced control
         public const byte KnockedOut = 6;
+        public const byte Grabbed = 7;      // held by another character (can mash to break free)
 
         public static string Name(byte a) => a switch
         {
             Light => "LIGHT", HeavyCharge => "CHARGING", HeavyStrike => "HEAVY", Dash => "DASH",
-            Launched => "LAUNCHED", KnockedOut => "KNOCKED OUT", _ => ""
+            Launched => "LAUNCHED", KnockedOut => "KNOCKED OUT", Grabbed => "GRABBED", _ => ""
         };
     }
 
@@ -77,5 +78,11 @@ namespace ToLive.Combat
         public const byte ResetDummyAndBuilding = 1;
         public const byte DestroyBuilding = 2;
         public const byte ToggleDummyGuard = 3;
+        public const byte FillSurgeMeter = 4;   // sender's character
+        public const byte ToggleTier = 5;
+        public const byte AlignmentDown = 6;    // toward trust
+        public const byte AlignmentUp = 7;      // toward dominance
+        public const byte DummyRitual = 8;      // the dummy performs the ritual (copies sender's alignment)
+        public const byte BenchRitualSetup = 9; // benchmark: put the sender next to the building with a full meter
     }
 }

@@ -1,4 +1,4 @@
-using ToLive.Destruction;
+﻿using ToLive.Destruction;
 using ToLive.Flight;
 using ToLive.Player;
 using Unity.Burst;
@@ -97,7 +97,10 @@ namespace ToLive.Combat
                     pos = points.Length > 0 ? points[(math.max(id, 1) - 1) % points.Length].Position : new float3(0, 60, 0);
                     yaw = math.degrees(math.atan2(-pos.x, -pos.z));
                 }
-                ResetCharacter(ref combat.ValueRW, ref flight.ValueRW, ref xf.ValueRW, pos, yaw, cfg.MaxPower);
+                var maxPower = cfg.MaxPower;
+                if (SystemAPI.TryGetSingleton<ToLive.Power.PowerConfig>(out var pcfg) && SystemAPI.HasComponent<ToLive.Power.PowerState>(entity))
+                    maxPower = pcfg.MaxPower(cfg.MaxPower, SystemAPI.GetComponent<ToLive.Power.PowerState>(entity));
+                ResetCharacter(ref combat.ValueRW, ref flight.ValueRW, ref xf.ValueRW, pos, yaw, maxPower);
             }
         }
 
@@ -114,6 +117,61 @@ namespace ToLive.Combat
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct DebugCommandServerSystem : ISystem
     {
+        /// <summary>Debug: fill the meter, toggle tier, slide alignment (sender's character) or make the dummy surge.</summary>
+        void ApplyPowerDebug(ref SystemState state, byte command, int senderId)
+        {
+            var hasCfg = SystemAPI.TryGetSingleton<ToLive.Power.PowerConfig>(out var cfg);
+            var tick = SystemAPI.GetSingleton<NetworkTime>().ServerTick.TickIndexForValidTick;
+            var senderAlignment = 0f;
+            byte senderTier = 1;
+            foreach (var (owner, power) in SystemAPI.Query<RefRO<GhostOwner>, RefRW<ToLive.Power.PowerState>>())
+            {
+                if (owner.ValueRO.NetworkId != senderId) continue;
+                var p = power.ValueRO;
+                switch (command)
+                {
+                    case DebugCommandRequest.FillSurgeMeter: p.Meter = 1f; if (p.Phase == ToLive.Power.SurgePhase.Burnout || p.Phase == ToLive.Power.SurgePhase.Surge) p.Phase = ToLive.Power.SurgePhase.None; break;
+                    case DebugCommandRequest.ToggleTier: p.Tier = (byte)(p.Tier >= 2 ? 1 : 2); break;
+                    case DebugCommandRequest.AlignmentDown: p.Alignment = math.max(-1f, p.Alignment - 0.25f); break;
+                    case DebugCommandRequest.AlignmentUp: p.Alignment = math.min(1f, p.Alignment + 0.25f); break;
+                }
+                power.ValueRW = p;
+                senderAlignment = p.Alignment;
+                senderTier = p.Tier;
+            }
+
+            if (command == DebugCommandRequest.BenchRitualSetup && SystemAPI.TryGetSingleton<BuildingGraph>(out var graph))
+            {
+                foreach (var (owner, power, xf, flight) in SystemAPI.Query<RefRO<GhostOwner>, RefRW<ToLive.Power.PowerState>, RefRW<LocalTransform>, RefRW<FlightState>>())
+                {
+                    if (owner.ValueRO.NetworkId != senderId) continue;
+                    var pos = new float3(graph.Center.x, 3f, graph.Center.z + 15f);
+                    xf.ValueRW = LocalTransform.FromPositionRotation(pos, quaternion.RotateY(math.radians(180f)));
+                    flight.ValueRW = new FlightState { Yaw = 180f };
+                    var p = power.ValueRO;
+                    p.Meter = 1f; p.Phase = ToLive.Power.SurgePhase.None;
+                    power.ValueRW = p;
+                }
+            }
+
+            if (command == DebugCommandRequest.DummyRitual && hasCfg)
+            {
+                foreach (var (power, _) in SystemAPI.Query<RefRW<ToLive.Power.PowerState>, RefRO<TrainingDummy>>())
+                {
+                    var p = power.ValueRO;
+                    if (p.Phase != ToLive.Power.SurgePhase.None) continue;
+                    p.Alignment = senderAlignment;
+                    p.Tier = senderTier;
+                    p.Meter = 1f;
+                    p.Phase = ToLive.Power.SurgePhase.Ritual;
+                    p.PhaseStartTick = tick;
+                    p.PhaseEndTick = tick + CombatSystem.Ticks(cfg.RitualTime, 60);
+                    p.Erupted = 0;
+                    power.ValueRW = p;
+                }
+            }
+        }
+
         /// <summary>NetworkId of the client world running in this process (the host's own player), or -1.</summary>
         static int LocalClientNetworkId()
         {
@@ -152,6 +210,9 @@ namespace ToLive.Combat
                 if (command == DebugCommandRequest.ToggleDummyGuard)
                     foreach (var dummy in SystemAPI.Query<RefRW<TrainingDummy>>())
                         dummy.ValueRW.Guard = (byte)(dummy.ValueRO.Guard == 0 ? 1 : 0);
+
+                if (command >= DebugCommandRequest.FillSurgeMeter && command <= DebugCommandRequest.BenchRitualSetup)
+                    ApplyPowerDebug(ref state, command, senderId);
 
                 if (SystemAPI.TryGetSingletonEntity<BuildingGraph>(out var graph))
                 {

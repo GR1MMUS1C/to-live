@@ -105,12 +105,12 @@ namespace ToLive.EditorTools
         }
 
         /// <summary>Same as <see cref="PlaySequence"/> but digits (CLI-quoting friendly):
-        /// 0 wait, 1 light, 2 dash, 3 lock, 4 hold heavy, 5 release heavy, 6 hold guard, 7 release guard.</summary>
+        /// 0 wait, 1 light, 2 dash, 3 lock, 4 hold heavy, 5 release heavy, 6 hold guard, 7 release guard, 8 grab/throw.</summary>
         public static string PlayCode(string digits, float interval)
         {
-            var map = ".LDKHhGg";
+            var map = ".LDKHhGgP";
             var sb = new StringBuilder();
-            foreach (var d in digits) sb.Append(d >= '0' && d <= '7' ? map[d - '0'] : '.');
+            foreach (var d in digits) sb.Append(d >= '0' && d <= '8' ? map[d - '0'] : '.');
             return PlaySequence(sb.ToString(), interval);
         }
 
@@ -128,6 +128,7 @@ namespace ToLive.EditorTools
                 case 'h': InputReader.HeavyHeld = false; break;
                 case 'G': InputReader.GuardHeld = true; break;
                 case 'g': InputReader.GuardHeld = false; break;
+                case 'P': InputReader.GrabPresses++; break;
             }
             s_NextPressTime = EditorApplication.timeSinceStartup + s_Interval;
             foreach (var world in World.All)
@@ -142,6 +143,82 @@ namespace ToLive.EditorTools
                     LastSequenceLog += $"{ch}: dummy power={c.Power:0} action={ToLive.Combat.CombatAction.Name(c.Action)} pos={Fmt(p)}\n";
                 }
             }
+        }
+
+        static int s_FilmCount, s_FilmIndex;
+        static double s_FilmNext, s_FilmInterval;
+        static string s_FilmPrefix;
+
+        /// <summary>
+        /// Captures <paramref name="count"/> Game-view screenshots every <paramref name="interval"/> s
+        /// to Logs/{prefix}_N.png, timed inside the Editor (no CLI latency).
+        /// </summary>
+        public static string Film(int prefixId, int count, float interval)
+        {
+            s_FilmPrefix = "film" + prefixId; s_FilmCount = count; s_FilmIndex = 0; s_FilmInterval = interval;
+            s_FilmNext = EditorApplication.timeSinceStartup;
+            EditorApplication.update -= FilmTick;
+            EditorApplication.update += FilmTick;
+            return "filming";
+        }
+
+        static void FilmTick()
+        {
+            if (s_FilmIndex >= s_FilmCount) { EditorApplication.update -= FilmTick; return; }
+            if (EditorApplication.timeSinceStartup < s_FilmNext) return;
+            ScreenCapture.CaptureScreenshot(System.IO.Path.GetFullPath($"Logs/{s_FilmPrefix}_{s_FilmIndex}.png"));
+            s_FilmIndex++;
+            s_FilmNext += s_FilmInterval;
+        }
+
+        public static string HaloDebug()
+        {
+            var sb = new StringBuilder();
+            foreach (var r in Object.FindObjectsByType<MeshRenderer>(FindObjectsInactive.Include))
+            {
+                if (r.gameObject.name != "Shard") continue;
+                sb.AppendLine($"{r.transform.parent.name} active={r.gameObject.activeInHierarchy} mat={(r.sharedMaterial == null ? "null" : r.sharedMaterial.name + "/" + r.sharedMaterial.shader.name)} pos={r.transform.position} scale={r.transform.lossyScale}");
+                if (sb.Length > 1500) break;
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Fake the milestone-3 inputs (holds stay until changed; grab is a press).</summary>
+        public static string FakePower(bool beamHeld, bool ritualHeld, bool grabPress)
+        {
+            var reader = Object.FindAnyObjectByType<InputReader>();
+            if (reader != null) reader.enabled = false;
+            InputReader.BeamHeld = beamHeld;
+            InputReader.RitualHeld = ritualHeld;
+            if (grabPress) InputReader.GrabPresses++;
+            GameplayInputGate.Blocked = false;
+            return "power input faked";
+        }
+
+        /// <summary>Power state (tier, alignment, meter, phase, beam, grab) of every character per world.</summary>
+        public static string PowerReport()
+        {
+            var sb = new StringBuilder();
+            foreach (var world in World.All)
+            {
+                if (!world.IsCreated || (!world.IsClient() && !world.IsServer())) continue;
+                var em = world.EntityManager;
+                using var q = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.Power.PowerState>(), ComponentType.ReadOnly<ToLive.Power.MoveState>(),
+                    ComponentType.ReadOnly<ToLive.Combat.CombatState>(), ComponentType.ReadOnly<LocalTransform>(), ComponentType.ReadOnly<FlightState>());
+                using var es = q.ToEntityArray(Allocator.Temp);
+                sb.AppendLine(world.Name + ":");
+                foreach (var e in es)
+                {
+                    var p = em.GetComponentData<ToLive.Power.PowerState>(e);
+                    var m = em.GetComponentData<ToLive.Power.MoveState>(e);
+                    var c = em.GetComponentData<ToLive.Combat.CombatState>(e);
+                    var t = em.GetComponentData<LocalTransform>(e);
+                    var f = em.GetComponentData<FlightState>(e);
+                    var who = em.HasComponent<ToLive.Combat.TrainingDummy>(e) ? "dummy" : (em.HasComponent<GhostOwner>(e) ? $"player{em.GetComponentData<GhostOwner>(e).NetworkId}" : "?");
+                    sb.AppendLine($"  {who} tier={p.Tier} align={p.Alignment:0.00} meter={p.Meter:0.00} fuel={p.Fuel:0} phase={ToLive.Power.SurgePhase.Name(p.Phase)}({p.Phase}) erupted={p.Erupted} beam={m.Beam} energy={p.BeamEnergy:0.00} carrying={(m.Carrying == Entity.Null ? "-" : "yes")} grabbedBy={(m.GrabbedBy == Entity.Null ? "-" : "yes")} mash={m.Mash} power={c.Power:0} action={ToLive.Combat.CombatAction.Name(c.Action)} pos={Fmt(t.Position)} speed={math.length(f.Velocity):0.0}");
+                }
+            }
+            return sb.ToString();
         }
 
         /// <summary>Combat state of every character in every world.</summary>
@@ -408,7 +485,7 @@ namespace ToLive.EditorTools
             return "no server";
         }
 
-        public static string StartBenchmark(int cap, int mult = 1) { ToLive.UI.PerfBenchmark.StartInEditor(cap, System.IO.Path.GetFullPath("Logs/bench-editor.csv"), mult); return "started"; }
+        public static string StartBenchmark(int cap, int mult = 1, bool ritual = false) { ToLive.UI.PerfBenchmark.StartInEditor(cap, System.IO.Path.GetFullPath("Logs/bench-editor.csv"), mult, ritual); return "started"; }
 
         public static string ReleaseInput()
         {

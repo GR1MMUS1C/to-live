@@ -29,6 +29,13 @@ namespace ToLive.UI
 
         public static float SmoothedFps { get; private set; }
         public static float SmoothedFrameMs { get; private set; }
+        VisualElement m_SurgeFill, m_BeamFill, m_Flash;
+        Label m_Tier, m_Ready;
+        static Color s_FlashColor;
+        static float s_FlashTime, s_FlashDuration;
+
+        /// <summary>Full-screen flash (e.g. the eruption), fading out over <paramref name="duration"/> seconds.</summary>
+        public static void Flash(Color color, float duration) { s_FlashColor = color; s_FlashDuration = duration; s_FlashTime = Time.unscaledTime; }
 
         void Start()
         {
@@ -43,6 +50,25 @@ namespace ToLive.UI
             MakeLabel(power, "POWER", 14);
             m_PowerFill = Bar(power, new Color(0.3f, 0.75f, 1f));
             m_State = MakeLabel(power, "", 16);
+            MakeLabel(power, "SURGE", 14);
+            m_SurgeFill = Bar(power, new Color(1f, 1f, 1f));
+            MakeLabel(power, "BEAM", 12);
+            m_BeamFill = Bar(power, new Color(0.7f, 0.7f, 0.75f));
+            m_Tier = MakeLabel(power, "", 14);
+
+            // "SURGE READY" prompt, centre-bottom.
+            m_Ready = MakeLabel(m_Root, "", 30);
+            m_Ready.style.position = Position.Absolute;
+            m_Ready.style.bottom = new Length(18, LengthUnit.Percent);
+            m_Ready.style.left = 0; m_Ready.style.right = 0;
+            m_Ready.style.unityTextAlign = TextAnchor.MiddleCenter;
+            m_Ready.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            // Full-screen flash (eruption).
+            m_Flash = new VisualElement { pickingMode = PickingMode.Ignore };
+            m_Flash.style.position = Position.Absolute;
+            m_Flash.style.left = 0; m_Flash.style.right = 0; m_Flash.style.top = 0; m_Flash.style.bottom = 0;
+            doc.Add(m_Flash);
 
             // Lock-on target, top centre.
             m_TargetPanel = Panel(m_Root, 0, 24, 300);
@@ -134,7 +160,18 @@ namespace ToLive.UI
                     if (kb.f5Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.ResetDummyAndBuilding);
                     if (kb.f9Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.DestroyBuilding);
                     if (kb.f6Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.ToggleDummyGuard);
+                    if (kb.f4Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.FillSurgeMeter);
+                    if (kb.f7Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.ToggleTier);
+                    if (kb.f8Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.DummyRitual);
+                    if (kb.leftBracketKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.AlignmentDown);
+                    if (kb.rightBracketKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.AlignmentUp);
                 }
+            }
+            if (m_Flash != null)
+            {
+                var a = s_FlashDuration > 0f ? Mathf.Clamp01(1f - (Time.unscaledTime - s_FlashTime) / s_FlashDuration) : 0f;
+                var fc = s_FlashColor; fc.a = a * a;
+                m_Flash.style.backgroundColor = fc;
             }
             if (m_Root == null) return;
 
@@ -143,7 +180,7 @@ namespace ToLive.UI
             m_Overlay.style.display = m_ShowOverlay ? DisplayStyle.Flex : DisplayStyle.None;
             if (m_ShowOverlay)
                 m_OverlayText.text = $"{m_FpsText}\nPing {Ping():0} ms\nLive debris {DebrisSystem.LiveDebris}  (total {DebrisSystem.TotalDebris})\n" +
-                                     $"Broken chunks {DebrisSystem.BrokenChunks} / {DebrisSystem.ChunkCount}\nF5 reset + rebuild   F6 dummy guard   F9 destroy building";
+                                     $"Broken chunks {DebrisSystem.BrokenChunks} / {DebrisSystem.ChunkCount}\nF4 fill surge  F5 reset  F6 dummy guard  F7 tier  F8 dummy ritual  F9 destroy  [ ] alignment";
             if (!inGame || !FlightCameraRig.HasLocalPlayer)
             {
                 m_TargetPanel.style.display = DisplayStyle.None;
@@ -151,10 +188,23 @@ namespace ToLive.UI
                 return;
             }
 
-            const float maxPower = 100f;
+            var maxPower = ToLive.Power.PowerPresenter.LocalTier >= 2 ? 150f : 100f;
             m_PowerFill.style.width = new Length(Mathf.Clamp01(FlightCameraRig.LocalPower / maxPower) * 100f, LengthUnit.Percent);
             var action = FlightCameraRig.LocalAction;
             m_State.text = action == CombatAction.HeavyCharge ? $"CHARGING {FlightCameraRig.LocalCharge * 100f:0}%" : CombatAction.Name(action);
+            var phase = ToLive.Power.PowerPresenter.LocalPhase;
+            var meter = ToLive.Power.PowerPresenter.LocalMeter;
+            var energy = ToLive.Power.PowerLook.Instance != null ? ToLive.Power.PowerLook.Instance.EnergyColor(ToLive.Power.PowerPresenter.LocalAlignment) : Color.white;
+            var energyLdr = energy.maxColorComponent > 1f ? energy / energy.maxColorComponent : energy;
+            m_SurgeFill.style.width = new Length(Mathf.Clamp01(meter) * 100f, LengthUnit.Percent);
+            m_SurgeFill.style.backgroundColor = phase == ToLive.Power.SurgePhase.Burnout ? new Color(0.35f, 0.35f, 0.38f) : energyLdr;
+            m_BeamFill.style.width = new Length(Mathf.Clamp01(ToLive.Power.PowerPresenter.LocalBeamEnergy) * 100f, LengthUnit.Percent);
+            var align = ToLive.Power.PowerPresenter.LocalAlignment;
+            m_Tier.text = (ToLive.Power.PowerPresenter.LocalTier >= 2 ? "TIER II" : "TIER I") + (align < -0.2f ? "   TRUST" : align > 0.2f ? "   DOMINANCE" : "   BALANCED") +
+                          (phase != ToLive.Power.SurgePhase.None ? "   " + ToLive.Power.SurgePhase.Name(phase) : "");
+            var ready = phase == ToLive.Power.SurgePhase.None && meter >= 0.999f;
+            m_Ready.text = ready ? "SURGE READY  -  hold L3 + R3  (R)" : phase == ToLive.Power.SurgePhase.Burnout ? "BURNOUT" : "";
+            m_Ready.style.color = ready ? energyLdr * (0.75f + 0.25f * Mathf.Sin(Time.time * 6f)) : new Color(0.6f, 0.6f, 0.62f);
             m_Center.text = action == CombatAction.KnockedOut ? "KNOCKED OUT\nrespawning..." : "";
 
             if (FlightCameraRig.HasLockTarget)

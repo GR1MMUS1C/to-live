@@ -28,6 +28,20 @@ namespace ToLive.Destruction
         public float StillTime;      // seconds spent resting
         public byte Asleep;
         public BlobAssetReference<Collider> Collider;
+        public byte Lifted;          // hovering around a ritual (cosmetic)
+        public float3 Base;          // where it rested before being lifted
+        public float3 Size;
+    }
+
+    /// <summary>Cosmetic ritual request for one frame (filled by the PowerPresenter on the client).</summary>
+    public struct RitualDebrisFx
+    {
+        public int Caster;
+        public float3 Center;
+        public float Radius, Height, Progress;
+        public bool Fling, SpawnRubble;
+        public int RubbleCount;
+        public UnityEngine.Color Tint;
     }
 
     /// <summary>
@@ -47,6 +61,8 @@ namespace ToLive.Destruction
         /// <summary>Benchmark only: overrides the total cap, and multiplies pieces per chunk (simulates more destruction).</summary>
         public static int TotalCapOverride = -1;
         public static int SpawnMultiplier = 1;
+        /// <summary>Ritual debris effects requested this frame (client cosmetic).</summary>
+        public static readonly System.Collections.Generic.List<RitualDebrisFx> RitualFx = new System.Collections.Generic.List<RitualDebrisFx>();
 
         int m_Order;
         uint m_Generation;
@@ -98,6 +114,8 @@ namespace ToLive.Destruction
             }
 
             UpdateSleepAndCaps(cfg);
+            if (RitualFx.Count > 0 && cfg.Prefab != Entity.Null) ApplyRitualFx(cfg);
+            RitualFx.Clear();
         }
 
         void Spawn(NativeArray<DebrisSpawnRequest> pending, in DebrisConfig cfg, in BuildingGraph graph, float3 impactVelocity)
@@ -139,7 +157,85 @@ namespace ToLive.Destruction
                     em.AddComponentData(e, new PhysicsVelocity { Linear = velocity, Angular = m_Random.NextFloat3(-3f, 3f) });
                     em.AddComponentData(e, new PhysicsDamping { Linear = 0.05f, Angular = 0.2f });
                     em.AddSharedComponent(e, new PhysicsWorldIndex(1));
-                    em.AddComponentData(e, new Debris { Order = m_Order++, Collider = collider });
+                    em.AddComponentData(e, new Debris { Order = m_Order++, Collider = collider, Size = size });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Ritual cosmetics: rubble tears up from the ground, settled pieces near the caster lift and
+        /// hover higher as the build-up grows, and on the eruption everything lifted is flung outward.
+        /// </summary>
+        void ApplyRitualFx(in DebrisConfig cfg)
+        {
+            var em = EntityManager;
+            var time = (float)SystemAPI.Time.ElapsedTime;
+            foreach (var fx in RitualFx)
+            {
+                if (fx.SpawnRubble)
+                {
+                    for (var i = 0; i < fx.RubbleCount; i++)
+                    {
+                        var a = m_Random.NextFloat(0f, math.PI * 2f);
+                        var r = m_Random.NextFloat(2.5f, fx.Radius);
+                        var size = new float3(m_Random.NextFloat(0.3f, 1.4f), m_Random.NextFloat(0.2f, 0.8f), m_Random.NextFloat(0.3f, 1.4f));
+                        var groundY = math.max(0f, fx.Center.y - 30f) <= 0f ? size.y * 0.5f : fx.Center.y - 1.5f;
+                        var pos = new float3(fx.Center.x + math.cos(a) * r, groundY, fx.Center.z + math.sin(a) * r);
+                        var e = em.Instantiate(cfg.Prefab);
+                        em.SetComponentData(e, LocalTransform.FromPositionRotation(pos, quaternion.Euler(m_Random.NextFloat3(-0.3f, 0.3f))));
+                        em.AddComponentData(e, new PostTransformMatrix { Value = float4x4.Scale(size) });
+                        em.AddComponentData(e, new Debris { Order = m_Order++, Asleep = 1, Size = size });
+                    }
+                }
+
+                var lift = fx.Height * math.smoothstep(0f, 1f, fx.Progress);
+                foreach (var (debris, xf, e) in SystemAPI.Query<RefRW<Debris>, RefRW<LocalTransform>>().WithEntityAccess())
+                {
+                    var d = debris.ValueRO;
+                    if (d.Asleep == 0) continue; // only settled pieces lift
+                    var p = d.Lifted != 0 ? d.Base : xf.ValueRO.Position;
+                    var flat = new float2(p.x - fx.Center.x, p.z - fx.Center.z);
+                    var dist = math.length(flat);
+                    if (dist > fx.Radius || p.y > fx.Center.y + 12f) continue;
+                    if (d.Lifted == 0) { d.Lifted = 1; d.Base = p; debris.ValueRW = d; }
+
+                    var seed = (d.Order % 97) * 0.37f;
+                    var near = 1f - dist / fx.Radius;
+                    var h = lift * (0.4f + 0.9f * near) * (0.7f + 0.3f * math.sin(seed * 5f));
+                    var bob = math.sin(time * (1.5f + seed) + seed * 10f) * 0.25f * fx.Progress;
+                    // slowly drift inward/around as the pressure builds
+                    var swirl = quaternion.RotateY(fx.Progress * 0.35f * (0.5f + near));
+                    var offset = math.mul(swirl, new float3(d.Base.x - fx.Center.x, 0, d.Base.z - fx.Center.z));
+                    var t = xf.ValueRO;
+                    t.Position = new float3(fx.Center.x, d.Base.y, fx.Center.z) + offset + new float3(0, h + bob, 0);
+                    t.Rotation = math.mul(t.Rotation, quaternion.Euler(new float3(0.4f, 0.7f, 0.2f) * SystemAPI.Time.DeltaTime * fx.Progress * (1f + seed)));
+                    xf.ValueRW = t;
+                }
+
+                if (fx.Fling)
+                {
+                    var toWake = new NativeList<Entity>(Allocator.Temp);
+                    foreach (var (debris, e) in SystemAPI.Query<RefRO<Debris>>().WithEntityAccess())
+                        if (debris.ValueRO.Lifted != 0) toWake.Add(e);
+                    foreach (var e in toWake)
+                    {
+                        var d = em.GetComponentData<Debris>(e);
+                        var pos = em.GetComponentData<LocalTransform>(e).Position;
+                        var outward = math.normalizesafe(new float3(pos.x - fx.Center.x, 0, pos.z - fx.Center.z), new float3(1, 0, 0));
+                        var velocity = outward * m_Random.NextFloat(22f, 45f) + new float3(0, m_Random.NextFloat(6f, 18f), 0);
+                        var collider = BoxCollider.Create(new BoxGeometry
+                        {
+                            Center = float3.zero, Orientation = quaternion.identity, Size = d.Size,
+                            BevelRadius = math.min(0.05f, math.cmin(d.Size) * 0.1f),
+                        }, CollisionFilter.Default);
+                        em.AddComponentData(e, new PhysicsCollider { Value = collider });
+                        em.AddComponentData(e, PhysicsMass.CreateDynamic(collider.Value.MassProperties, math.max(1f, d.Size.x * d.Size.y * d.Size.z * cfg.Density)));
+                        em.AddComponentData(e, new PhysicsVelocity { Linear = velocity, Angular = m_Random.NextFloat3(-6f, 6f) });
+                        em.AddComponentData(e, new PhysicsDamping { Linear = 0.05f, Angular = 0.2f });
+                        if (!em.HasComponent<PhysicsWorldIndex>(e)) em.AddSharedComponent(e, new PhysicsWorldIndex(1));
+                        d.Asleep = 0; d.Lifted = 0; d.StillTime = 0f; d.Collider = collider;
+                        em.SetComponentData(e, d);
+                    }
                 }
             }
         }

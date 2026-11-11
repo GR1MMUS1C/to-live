@@ -91,6 +91,7 @@ namespace ToLive.Destruction
     {
         public int Chunk;
         public float3 Velocity;
+        public Entity Instigator; // who gets surge fuel for this break (may be Entity.Null)
     }
 
     /// <summary>Server-only pending debug actions for the building.</summary>

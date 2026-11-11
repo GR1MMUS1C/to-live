@@ -87,6 +87,61 @@ Out of scope for M1: combat, destruction, crowds, cloud services, relay.
   - Settled pieces drop their physics body.
   - Live and total caps apply, and spawning is spread over frames.
 
+## Milestone 3A: transformation, beam, grab and throw
+
+**Gate:** "the transformation moment gives you chills."
+
+**Power state.** Each character has a replicated `PowerState`:
+
+- **tier**: 1, or 2 (a permanent baseline multiplier);
+- **alignment**: from -1 (trust) to +1 (dominance); it drives the look;
+- **surge meter**;
+- **surge phase**: Ritual → Surge → Burnout;
+- **beam energy**.
+
+It is predicted for its owner (so starting the ritual or the beam feels instant) and authoritative on the server. The timers are tick numbers, so re-prediction always lands on the same result.
+
+**Fuel interface.** `SurgeFuel` / `SurgeFuelEvent` is the single, clearly named place where the meter gets filled. Today the producers are damage dealt, damage taken and chunks broken. A chunk smashed by a launched body is credited to whoever launched it. **Milestone 4 replaces the producers with the crowd** (trust / fear) without touching the surge code. Tier 2 unlocks when lifetime fuel crosses a threshold.
+
+**The ritual.**
+
+1. A deliberate input: hold L3 + R3, or R.
+2. A 3 s build-up. You are locked in place and take 15% damage, and knockback can't interrupt you. Meanwhile the server breaks chunks in a growing radius and pushes characters back.
+3. The **eruption**, server-side on the first surge tick: damage and knockback in a radius, plus chunks broken in a larger radius.
+4. About 20 s of **surge**: speed ×1.6, damage ×2, knockback ×1.8, beam ×2, damage taken ÷1.5. The meter drains as it runs.
+5. 6 s of **burnout**: speed ×0.7 and damage ×0.6, and you can't re-surge.
+
+Every number is on **Power Config**.
+
+**The look: "fractured halo".**
+
+- Procedural, hard-edged shard meshes in an unlit HDR colour, so they bloom. No outline or toon shading.
+- **Trust:** two level, symmetrical rings that orbit slowly with a steady glow, in cyan.
+- **Dominance:** an uneven, tilted swarm of outward-pointing shards with a fast, unstable orbit, flicker and occasional snaps outward, in crimson.
+- The two blend by alignment.
+- Tier 2 shows a faint, small halo permanently. The ritual grows it to the full halo, and the surge keeps it.
+
+**Art rule.**
+
+- A global **Base Look** volume keeps the world muted: ACES tonemapping, saturation -35.
+- During a ritual or surge, a **Power Volume** fades in for the local view, whether it's your own ritual or one happening within about 80 m. It adds a colour push and a stronger bloom.
+- At the same time, a point light in the energy colour washes over the surroundings.
+- Power is the only saturated colour.
+
+**Ritual world reactions (cosmetic, per client).** Rubble tears up from the ground. Settled debris near the caster lifts and hovers, then is flung outward at the eruption. Alongside that: pressure rings, a crater disc, glass bursts on the faces of nearby buildings (found by raycast), an eruption flash and camera kick, and the ritual camera move. There are also SFX hooks: `CombatFx.OnRitual(progress)` and `OnEruption`.
+
+**Beam.** A sustained sphere sweep along the aim direction, run on the server. Chunks along it break until it reaches the first unbreakable surface. Characters near the line take damage over time and are pushed. The beam draws on a regenerating energy bar.
+
+**Grab and throw.**
+
+- Only a staggered or launched target can be grabbed.
+- Holder side: predicted.
+- Victim side: the server holds the victim in front of the holder.
+- The throw launches the victim along the holder's aim, and it smashes chunks like any launch.
+- The victim can mash light or dash to break free after 0.8 s.
+
+**Build note.** Player builds strip shaders that no asset references. All runtime-created effect materials therefore come from material assets on the **FX Materials** scene object (`FxMaterials` / `FxMaterialSource`), not from `Shader.Find`. Milestone 2's impact rings and trails were affected by this in builds too, and are now fixed.
+
 ## Where things live
 
 | What | Where |
@@ -95,6 +150,9 @@ Out of scope for M1: combat, destruction, crowds, cloud services, relay.
 | Combat tuning | `Combat Config` in the District subscene (`CombatConfigAuthoring`) |
 | Debris caps / feel | `Debris Config` in the District subscene (`DebrisConfigAuthoring`) |
 | Breakable building generator | `Assets/_Project/Editor/BreakableBuildingGenerator.cs` |
+| Transformation / beam / grab tuning | `Power Config` in the District subscene (`PowerConfigAuthoring`) |
+| Power look (colours, halo, wash) | `Power Look` in `Main.unity` (`PowerLook`) |
+| Post-processing | `Assets/_Project/Rendering/BaseLook.asset`, `PowerSurge.asset` |
 | Camera tuning | `Game Systems` object in `Main.unity` (`FlightCameraRig`) |
 | Input bindings | `Assets/_Project/Input/ToLive.inputactions` |
 | Code | `Assets/_Project/Scripts/` (Net, Player, Flight, Input, CameraRig, UI) |

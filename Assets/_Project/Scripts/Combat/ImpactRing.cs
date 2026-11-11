@@ -25,7 +25,7 @@ namespace ToLive.Combat
         {
             if (s_Material == null)
             {
-                s_Material = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+                s_Material = FxMaterials.Unlit();
                 s_Material.color = new Color(1f, 0.85f, 0.4f);
             }
             m_Line = gameObject.AddComponent<LineRenderer>();

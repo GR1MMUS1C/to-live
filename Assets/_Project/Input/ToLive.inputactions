@@ -18,7 +18,10 @@
                 { "name": "Heavy", "type": "Button", "id": "a1c2e3f4-000a-4a5b-8c9d-00000000000a", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
                 { "name": "Dash", "type": "Button", "id": "a1c2e3f4-000b-4a5b-8c9d-00000000000b", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
                 { "name": "Guard", "type": "Button", "id": "a1c2e3f4-000c-4a5b-8c9d-00000000000c", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
-                { "name": "LockOn", "type": "Button", "id": "a1c2e3f4-000d-4a5b-8c9d-00000000000d", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false }
+                { "name": "LockOn", "type": "Button", "id": "a1c2e3f4-000d-4a5b-8c9d-00000000000d", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "Beam", "type": "Button", "id": "a1c2e3f4-000e-4a5b-8c9d-00000000000e", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "Grab", "type": "Button", "id": "a1c2e3f4-000f-4a5b-8c9d-00000000000f", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false },
+                { "name": "Ritual", "type": "Button", "id": "a1c2e3f4-0010-4a5b-8c9d-000000000010", "expectedControlType": "Button", "processors": "", "interactions": "", "initialStateCheck": false }
             ],
             "bindings": [
                 { "name": "", "id": "b0000000-0000-4000-8000-000000000001", "path": "<Gamepad>/leftStick", "interactions": "", "processors": "StickDeadzone", "groups": "Gamepad", "action": "Move", "isComposite": false, "isPartOfComposite": false },
@@ -48,7 +51,12 @@
                 { "name": "", "id": "b0000000-0000-4000-8000-000000000019", "path": "<Gamepad>/leftShoulder", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Guard", "isComposite": false, "isPartOfComposite": false },
                 { "name": "", "id": "b0000000-0000-4000-8000-00000000001a", "path": "<Keyboard>/q", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Guard", "isComposite": false, "isPartOfComposite": false },
                 { "name": "", "id": "b0000000-0000-4000-8000-00000000001b", "path": "<Gamepad>/rightStickPress", "interactions": "", "processors": "", "groups": "Gamepad", "action": "LockOn", "isComposite": false, "isPartOfComposite": false },
-                { "name": "", "id": "b0000000-0000-4000-8000-00000000001c", "path": "<Keyboard>/tab", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "LockOn", "isComposite": false, "isPartOfComposite": false }
+                { "name": "", "id": "b0000000-0000-4000-8000-00000000001c", "path": "<Keyboard>/tab", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "LockOn", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-00000000001d", "path": "<Gamepad>/leftTrigger", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Beam", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-00000000001e", "path": "<Keyboard>/e", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Beam", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-00000000001f", "path": "<Gamepad>/dpad/up", "interactions": "", "processors": "", "groups": "Gamepad", "action": "Grab", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000020", "path": "<Keyboard>/g", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Grab", "isComposite": false, "isPartOfComposite": false },
+                { "name": "", "id": "b0000000-0000-4000-8000-000000000021", "path": "<Keyboard>/r", "interactions": "", "processors": "", "groups": "Keyboard&Mouse", "action": "Ritual", "isComposite": false, "isPartOfComposite": false }
             ]
         }
     ],
