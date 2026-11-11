@@ -16,7 +16,7 @@ namespace ToLive.EditorTools
     /// Developer helper for automated play-mode checks (used from the Unity CLI with `script eval`).
     /// Not used by the game. It can fake gameplay input and report every player's state per world.
     /// </summary>
-    public static class DevProbe
+    public static partial class DevProbe
     {
         /// <summary>One line per player per world: id, position, gear, speed, supersonic.</summary>
         public static string Report()
@@ -524,7 +524,7 @@ namespace ToLive.EditorTools
             return "no server";
         }
 
-        public static string StartBenchmark(int cap, int mult = 1, bool ritual = false) { ToLive.UI.PerfBenchmark.StartInEditor(cap, System.IO.Path.GetFullPath("Logs/bench-editor.csv"), mult, ritual); return "started"; }
+        public static string StartBenchmark(int cap, int mult = 1, bool ritual = false, int units = 0) { ToLive.UI.PerfBenchmark.StartInEditor(cap, System.IO.Path.GetFullPath("Logs/bench-editor.csv"), mult, ritual, units); return "started"; }
 
         public static string ReleaseInput()
         {

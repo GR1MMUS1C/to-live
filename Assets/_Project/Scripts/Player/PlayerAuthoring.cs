@@ -32,6 +32,10 @@ namespace ToLive.Player
                 AddComponent(entity, new ToLive.Power.PowerState { Tier = 1, BeamEnergy = 1f });
                 AddComponent<ToLive.Power.MoveState>(entity);
                 AddComponent<ToLive.Power.LastAttacker>(entity);
+                // Milestone 3B: human or AI rival (same prefab), heat blame and the rival's brain (server only)
+                AddComponent<ToLive.Opposition.CharacterKind>(entity);
+                AddComponent<ToLive.Opposition.HeatBlame>(entity);
+                AddComponent<ToLive.Rival.RivalBrain>(entity);
                 AddComponent(entity, new PlayerVisual
                 {
                     Body = authoring.Body != null ? GetEntity(authoring.Body, TransformUsageFlags.Dynamic) : Entity.Null,

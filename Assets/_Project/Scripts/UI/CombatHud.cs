@@ -7,6 +7,7 @@ using Unity.NetCode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
+using OV = ToLive.Opposition.OppositionView;
 
 namespace ToLive.UI
 {
@@ -31,6 +32,16 @@ namespace ToLive.UI
         public static float SmoothedFrameMs { get; private set; }
         VisualElement m_SurgeFill, m_BeamFill, m_Flash;
         Label m_Tier, m_Ready;
+        // milestone 3B: heat, rival, incoming fire, unit health bars
+        VisualElement m_HeatPanel, m_HeatFill, m_RivalPanel, m_RivalFill, m_Incoming, m_IncomingFill, m_IncomingArrow;
+        readonly VisualElement[] m_HeatPips = new VisualElement[3];
+        Label m_HeatLabel, m_RivalName, m_RivalState, m_IncomingText, m_Announce, m_Suppressed;
+        readonly System.Collections.Generic.List<(VisualElement back, VisualElement fill)> m_UnitBars = new System.Collections.Generic.List<(VisualElement, VisualElement)>();
+        byte m_SeenRivalDowns;
+        bool m_RivalWasDown, m_RivalSeen;
+        float m_AnnounceUntil;
+        static readonly string[] s_HeatNames = { "CALM", "POLICE", "MILITARY", "ANTI-GOD" };
+        static readonly string[] s_Difficulty = { "EASY", "NORMAL", "HARD" };
         static Color s_FlashColor;
         static float s_FlashTime, s_FlashDuration;
 
@@ -55,6 +66,10 @@ namespace ToLive.UI
             MakeLabel(power, "BEAM", 12);
             m_BeamFill = Bar(power, new Color(0.7f, 0.7f, 0.75f));
             m_Tier = MakeLabel(power, "", 14);
+            m_Suppressed = MakeLabel(power, "", 14);
+            m_Suppressed.style.color = new Color(1f, 0.35f, 0.3f);
+
+            BuildOppositionHud();
 
             // "SURGE READY" prompt, centre-bottom.
             m_Ready = MakeLabel(m_Root, "", 30);
@@ -96,12 +111,169 @@ namespace ToLive.UI
             m_Center.style.left = 0; m_Center.style.right = 0;
             m_Center.style.unityTextAlign = TextAnchor.MiddleCenter;
 
-            // Debug overlay, top right.
-            m_Overlay = Panel(m_Root, 0, 24, 340);
+            // Debug overlay, top right (below the heat panel).
+            m_Overlay = Panel(m_Root, 0, 130, 340);
             m_Overlay.style.left = StyleKeyword.Auto;
             m_Overlay.style.right = 24;
             m_OverlayText = MakeLabel(m_Overlay, "", 15);
         }
+
+        void BuildOppositionHud()
+        {
+            // Heat: three pips + level name + progress to the next level, top right.
+            m_HeatPanel = Panel(m_Root, 0, 24, 340);
+            m_HeatPanel.style.left = StyleKeyword.Auto;
+            m_HeatPanel.style.right = 24;
+            var row = new VisualElement { pickingMode = PickingMode.Ignore };
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            m_HeatPanel.Add(row);
+            MakeLabel(row, "HEAT", 14).style.marginRight = 8;
+            var heatColor = new Color(1f, 0.55f, 0.2f);
+            for (var i = 0; i < 3; i++)
+            {
+                var pip = new VisualElement { pickingMode = PickingMode.Ignore };
+                pip.style.width = 26; pip.style.height = 14; pip.style.marginRight = 5;
+                pip.style.borderTopWidth = 2; pip.style.borderBottomWidth = 2; pip.style.borderLeftWidth = 2; pip.style.borderRightWidth = 2;
+                pip.style.borderTopColor = heatColor; pip.style.borderBottomColor = heatColor; pip.style.borderLeftColor = heatColor; pip.style.borderRightColor = heatColor;
+                row.Add(pip);
+                m_HeatPips[i] = pip;
+            }
+            m_HeatLabel = MakeLabel(row, "", 15);
+            m_HeatLabel.style.marginLeft = 6;
+            m_HeatLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_HeatFill = Bar(m_HeatPanel, heatColor);
+            m_HeatFill.parent.style.height = 5; m_HeatFill.style.height = 5;
+            m_HeatFill.parent.style.marginTop = 4;
+
+            // Rival name plate (when locked on or near), top centre under the target panel.
+            m_RivalPanel = Panel(m_Root, 0, 86, 340);
+            m_RivalPanel.style.left = new Length(50, LengthUnit.Percent);
+            m_RivalPanel.style.marginLeft = -170;
+            m_RivalName = MakeLabel(m_RivalPanel, "", 16);
+            m_RivalName.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_RivalName.style.color = new Color(0.82f, 0.6f, 1f);
+            m_RivalFill = Bar(m_RivalPanel, new Color(0.6f, 0.3f, 0.95f));
+            m_RivalState = MakeLabel(m_RivalPanel, "", 13);
+
+            // Incoming fire (the anti-god weapon is locked on you): centre warning + edge arrow.
+            m_Incoming = Panel(m_Root, 0, 0, 420);
+            m_Incoming.style.top = new Length(22, LengthUnit.Percent);
+            m_Incoming.style.left = new Length(50, LengthUnit.Percent);
+            m_Incoming.style.marginLeft = -210;
+            m_Incoming.style.backgroundColor = new Color(0.35f, 0f, 0f, 0.55f);
+            m_IncomingText = MakeLabel(m_Incoming, "", 22);
+            m_IncomingText.style.unityTextAlign = TextAnchor.MiddleCenter;
+            m_IncomingText.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_IncomingFill = Bar(m_Incoming, new Color(1f, 0.2f, 0.15f));
+            m_IncomingArrow = new VisualElement { pickingMode = PickingMode.Ignore };
+            m_IncomingArrow.style.position = Position.Absolute;
+            m_IncomingArrow.style.width = 34; m_IncomingArrow.style.height = 34;
+            m_IncomingArrow.style.borderTopWidth = 6; m_IncomingArrow.style.borderRightWidth = 6;
+            var red = new Color(1f, 0.2f, 0.15f);
+            m_IncomingArrow.style.borderTopColor = red; m_IncomingArrow.style.borderRightColor = red;
+            m_Root.Add(m_IncomingArrow);
+
+            // Announcements (rival down / returns).
+            m_Announce = MakeLabel(m_Root, "", 28);
+            m_Announce.style.position = Position.Absolute;
+            m_Announce.style.top = new Length(30, LengthUnit.Percent);
+            m_Announce.style.left = 0; m_Announce.style.right = 0;
+            m_Announce.style.unityTextAlign = TextAnchor.MiddleCenter;
+            m_Announce.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_Announce.style.color = new Color(0.82f, 0.6f, 1f);
+        }
+
+        void UpdateOppositionHud()
+        {
+            var level = OV.HeatLevel;
+            for (var i = 0; i < 3; i++)
+                m_HeatPips[i].style.backgroundColor = i < level ? new Color(1f, 0.45f + 0.1f * i, 0.15f) : new Color(0, 0, 0, 0);
+            m_HeatLabel.text = s_HeatNames[Mathf.Clamp(level, 0, 3)] + (OV.Units > 0 ? $"   units {OV.Units}" : "");
+            m_HeatFill.style.width = new Length(Mathf.Clamp01(OV.HeatValue / Mathf.Max(1f, OV.HeatNext)) * 100f, LengthUnit.Percent);
+
+            // rival name plate
+            var showRival = OV.RivalPresent && (OV.RivalLocked || OV.RivalNear || OV.RivalDown);
+            m_RivalPanel.style.display = showRival ? DisplayStyle.Flex : DisplayStyle.None;
+            if (showRival)
+            {
+                m_RivalName.text = $"VANTA   rival ({s_Difficulty[Mathf.Clamp(OV.RivalDifficulty, 0, 2)]})";
+                m_RivalFill.style.width = new Length(Mathf.Clamp01(OV.RivalPower / Mathf.Max(1f, OV.RivalMaxPower)) * 100f, LengthUnit.Percent);
+                m_RivalState.text = OV.RivalDown ? $"DOWN - back in {OV.RivalRespawnIn:0} s"
+                    : OV.RivalPhase != ToLive.Power.SurgePhase.None ? ToLive.Power.SurgePhase.Name(OV.RivalPhase) : "";
+            }
+
+            // announcements
+            if (OV.RivalPresent)
+            {
+                if (!m_RivalSeen) { m_RivalSeen = true; m_SeenRivalDowns = OV.RivalDowns; m_RivalWasDown = OV.RivalDown; }
+                if (OV.RivalDowns != m_SeenRivalDowns) { m_SeenRivalDowns = OV.RivalDowns; m_Announce.text = "RIVAL DOWN"; m_AnnounceUntil = Time.unscaledTime + 3f; }
+                if (m_RivalWasDown && !OV.RivalDown) { m_Announce.text = "THE RIVAL RETURNS"; m_AnnounceUntil = Time.unscaledTime + 3f; }
+                m_RivalWasDown = OV.RivalDown;
+            }
+            else m_RivalSeen = false;
+            m_Announce.style.display = Time.unscaledTime < m_AnnounceUntil ? DisplayStyle.Flex : DisplayStyle.None;
+
+            // incoming fire
+            var cam = Camera.main;
+            m_Incoming.style.display = OV.IncomingBeam ? DisplayStyle.Flex : DisplayStyle.None;
+            m_IncomingArrow.style.display = DisplayStyle.None;
+            if (OV.IncomingBeam)
+            {
+                var p = OV.IncomingProgress;
+                m_IncomingText.text = OV.IncomingFiring ? "ANTI-GOD BEAM" : p > 0.75f ? "LOCKED - BREAK LINE OF SIGHT" : "ANTI-GOD WEAPON CHARGING";
+                m_IncomingText.style.color = Color.Lerp(Color.white, new Color(1f, 0.3f, 0.25f), 0.5f + 0.5f * Mathf.Sin(Time.time * (6f + 18f * p)));
+                m_IncomingFill.style.width = new Length(p * 100f, LengthUnit.Percent);
+                if (cam != null && m_Root.panel != null)
+                {
+                    // arrow at the screen edge pointing at the weapon when it's off screen
+                    var sp = cam.WorldToScreenPoint(OV.IncomingFrom);
+                    var c = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                    var d = new Vector2(sp.x, sp.y) - c;
+                    if (sp.z < 0f) d = -d;
+                    var onScreen = sp.z > 0f && sp.x > 0 && sp.x < Screen.width && sp.y > 0 && sp.y < Screen.height;
+                    if (!onScreen && d.sqrMagnitude > 1f)
+                    {
+                        d.Normalize();
+                        var edge = c + d * Mathf.Min(Screen.width, Screen.height) * 0.42f;
+                        var pp = RuntimePanelUtils.ScreenToPanel(m_Root.panel, new Vector2(edge.x, Screen.height - edge.y));
+                        m_IncomingArrow.style.display = DisplayStyle.Flex;
+                        m_IncomingArrow.style.left = pp.x - 17; m_IncomingArrow.style.top = pp.y - 17;
+                        m_IncomingArrow.style.rotate = new Rotate(new Angle(Mathf.Atan2(d.x, d.y) * Mathf.Rad2Deg - 45f, AngleUnit.Degree));
+                    }
+                }
+            }
+
+            m_Suppressed.text = OV.Suppressed ? "SURGE SUPPRESSED" : "";
+
+            // small health bars over recently hit units
+            var units = OV.DamagedUnits;
+            while (m_UnitBars.Count < units.Count)
+            {
+                var back = new VisualElement { pickingMode = PickingMode.Ignore };
+                back.style.position = Position.Absolute;
+                back.style.width = 60; back.style.height = 6;
+                back.style.backgroundColor = new Color(0, 0, 0, 0.6f);
+                var fill = new VisualElement { pickingMode = PickingMode.Ignore };
+                fill.style.height = 6;
+                fill.style.backgroundColor = new Color(1f, 0.8f, 0.3f);
+                back.Add(fill);
+                m_Root.Add(back);
+                m_UnitBars.Add((back, fill));
+            }
+            for (var i = 0; i < m_UnitBars.Count; i++)
+            {
+                var (back, fill) = m_UnitBars[i];
+                if (i >= units.Count || cam == null || m_Root.panel == null) { back.style.display = DisplayStyle.None; continue; }
+                var sp = cam.WorldToScreenPoint(units[i].pos);
+                if (sp.z <= 0f) { back.style.display = DisplayStyle.None; continue; }
+                var pp = RuntimePanelUtils.ScreenToPanel(m_Root.panel, new Vector2(sp.x, Screen.height - sp.y));
+                back.style.display = DisplayStyle.Flex;
+                back.style.left = pp.x - 30; back.style.top = pp.y - 3;
+                fill.style.width = new Length(units[i].health * 100f, LengthUnit.Percent);
+            }
+        }
+
 
         static VisualElement Panel(VisualElement parent, float left, float top, float width)
         {
@@ -165,6 +337,13 @@ namespace ToLive.UI
                     if (kb.f8Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.DummyRitual);
                     if (kb.leftBracketKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.AlignmentDown);
                     if (kb.rightBracketKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.AlignmentUp);
+                    // milestone 3B
+                    if (kb.pageUpKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.HeatUp);
+                    if (kb.pageDownKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.HeatDown);
+                    if (kb.homeKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.SpawnEachUnit);
+                    if (kb.endKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.ClearUnits);
+                    if (kb.insertKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.RivalToggle);
+                    if (kb.deleteKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.RivalDifficulty);
                 }
             }
             if (m_Flash != null)
@@ -180,7 +359,8 @@ namespace ToLive.UI
             m_Overlay.style.display = m_ShowOverlay ? DisplayStyle.Flex : DisplayStyle.None;
             if (m_ShowOverlay)
                 m_OverlayText.text = $"{m_FpsText}\nPing {Ping():0} ms\nLive debris {DebrisSystem.LiveDebris}  (total {DebrisSystem.TotalDebris})\n" +
-                                     $"Broken chunks {DebrisSystem.BrokenChunks} / {DebrisSystem.ChunkCount}\nF4 fill surge  F5 reset  F6 dummy guard  F7 tier  F8 dummy ritual  F9 destroy  [ ] alignment";
+                                     $"Broken chunks {DebrisSystem.BrokenChunks} / {DebrisSystem.ChunkCount}\nF4 fill surge  F5 reset  F6 dummy guard  F7 tier  F8 dummy ritual  F9 destroy  [ ] alignment\nPgUp/PgDn heat  Home spawn units  End clear units\nIns rival on/off  Del rival difficulty";
+            UpdateOppositionHud();
             if (!inGame || !FlightCameraRig.HasLocalPlayer)
             {
                 m_TargetPanel.style.display = DisplayStyle.None;

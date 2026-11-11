@@ -142,6 +142,45 @@ Every number is on **Power Config**.
 
 **Build note.** Player builds strip shaders that no asset references. All runtime-created effect materials therefore come from material assets on the **FX Materials** scene object (`FxMaterials` / `FxMaterialSource`), not from `Shader.Find`. Milestone 2's impact rings and trails were affected by this in builds too, and are now fixed.
 
+## Milestone 3B: opposition (heat, the response force, the rival)
+
+**Intent.** Tyrants mostly fight the army, protectors mostly fight disasters (milestone 4), and both fight the rival. Grey-box shapes; silhouettes and telegraphs over looks.
+
+**Heat** (per district, 0 to 3, server-decided, replicated on one small "Opposition State" ghost, shown as pips on the HUD).
+
+- `HeatSource` / `HeatEvent` is the single, clearly named place where heat rises, like the surge fuel source. Today's producers: chunks broken (blamed on whoever is responsible: a thrown unit is the thrower's fault), damage dealt to response units, ritual eruptions. Milestone 4's dominance replaces the producers.
+- Heat decays after a quiet period. Levels are thresholds on the raw value.
+- Each god (player or rival) has a server-only **blame** that rises with the heat it causes and fades after about 20 s. The army targets blamed gods first, and only leaves while nobody is blamed.
+
+**The response force.** Server-simulated, interpolated ghosts with simple, readable AI: spawn at the district edge, approach, hold a preferred range and height, strafe, fire on a cadence, retreat when heat drops (and nobody is blamed), fall as a wreck when destroyed.
+
+| Level | Unit | Weapon |
+|---|---|---|
+| 1 | Police drone (flat quad-rotor, blue light bar) | Hitscan tracers decided on the server; weak damage, tiny flinch |
+| 2 | Gunship (fuselage, wings, rotor, aiming pods) | Slow, visible rockets (40 m/s, slight lead): knockback launch, blast damage, breaks chunks |
+| 3 | Anti-god weapon (big core, ring, long barrel) | Telegraphed beam: 2.5 s charge with a visible aim line that tracks with lag, locks 0.6 s before firing, then a 0.5 s beam that drains a lot of power, launches and suppresses surge gain for 6 s. Buildings block it |
+
+- **Units are characters.** They carry the same flight + combat components as the dummy, so every existing move works on them: strike, launch, finisher, beam, grab, throw, chunk smashing. All damage goes through `Damage.Apply`. A launched body hitting another body (`BodyImpactSystem`) damages both and launches the one it hit.
+- **Movement.** The unit's brain writes a desired velocity (`UnitDrive`); the shared flight code steers to it (like an AIController feeding CharacterMovement).
+- **Spawning** is wave based and budgeted: per-type caps and a total cap (`Opposition Config`). The defaults come from the measured benchmark (see [PERF.md](PERF.md)).
+- **Wrecks** are cosmetic debris pieces under the existing debris caps.
+
+**Projectile netcode (why).**
+
+- **Tracers: not ghosts.** The server decides hit or miss instantly and writes the last shot (tick, end point, hit) into the unit's ghost state; clients draw the tracer when that changes. Many short-lived bullets as ghosts would cost a spawn + despawn in snapshots each; this costs a few bytes on a ghost that is replicated anyway.
+- **Rockets: interpolated ghosts, moved and detonated by the server.** They are few (a handful alive), slow and must be visible and dodgeable, and late joiners must see the ones in flight, which is exactly what ghosts give. Predicted spawning (the Netcode docs' recommendation for projectiles) is for **player-fired** projectiles to hide the client's round trip; these are fired by server AI, so there is nothing to predict. Clients draw the explosion when a rocket ghost despawns (the docs note despawns are sent immediately).
+- **Anti-god beam: state on the weapon's ghost** (phase, phase end tick, aim point), so every client draws the same telegraph from replicated data.
+
+**The rival ("VANTA").** An AI-controlled god using the **same player prefab and the same systems**. Its server-side brain decides after each simulation tick and writes a `PlayerInput` into the character's Netcode input buffer for the next tick, exactly where a client's input would land, so it can't do anything a player can't and it syncs like a player (owner-predicted prefab with no owner, so interpolated on every client).
+
+- Small state machine with tunable weights: approach, circle at range, dash in for chains, reactive guard (reaction delay + success chance, never frame-perfect), punish with a heavy after a successful guard, chase a launched target for a finisher, beam at range, grab a staggered target and throw it, disengage when low, ritual when the meter is full (more likely when losing). Finishers and throws aim through the breakable building when it's roughly behind the target.
+- Three difficulty presets (easy, normal, hard) on `Rival Config`.
+- Its own alignment: dominance by default, the opposite of the first human's when that leans dominance. Deep violet body.
+- Present when exactly one human is connected, absent with two; the Insert key overrides. Knocked out, it returns after 12 s and the HUD announces it.
+- Three-way fights emerge: the rival raises heat like anyone, the army shoots blamed gods, and the rival fights units that shoot at it.
+
+**HUD.** Heat pips + level name + progress, rival name plate (when locked on or within 60 m), incoming-fire warning with edge arrow for the anti-god beam, SURGE SUPPRESSED, small health bars over recently hit units. UI Toolkit only.
+
 ## Where things live
 
 | What | Where |
@@ -153,9 +192,11 @@ Every number is on **Power Config**.
 | Transformation / beam / grab tuning | `Power Config` in the District subscene (`PowerConfigAuthoring`) |
 | Power look (colours, halo, wash) | `Power Look` in `Main.unity` (`PowerLook`) |
 | Post-processing | `Assets/_Project/Rendering/BaseLook.asset`, `PowerSurge.asset` |
+| Heat and response force tuning | `Opposition Config` in the District subscene (`OppositionConfigAuthoring`) |
+| Rival tuning (difficulty presets) | `Rival Config` in the District subscene (`RivalConfigAuthoring`) |
 | Camera tuning | `Game Systems` object in `Main.unity` (`FlightCameraRig`) |
 | Input bindings | `Assets/_Project/Input/ToLive.inputactions` |
-| Code | `Assets/_Project/Scripts/` (Net, Player, Flight, Input, CameraRig, UI) |
+| Code | `Assets/_Project/Scripts/` (Net, Player, Flight, Input, CameraRig, Combat, Destruction, Power, Opposition, Rival, UI) |
 | Editor generators | `Assets/_Project/Editor/ToLiveSetup.cs` (menu **Tools > To Live**) |
 
 ## Key technical decisions

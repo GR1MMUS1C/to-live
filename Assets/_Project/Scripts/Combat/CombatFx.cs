@@ -28,6 +28,19 @@ namespace ToLive.Combat
         public static void RaiseRitual(float3 position, float progress) => OnRitual?.Invoke(position, progress);
         public static void RaiseEruption(float3 position) => OnEruption?.Invoke(position);
 
+        /// <summary>SFX hooks for the response force (milestone 3B): tracer shot, rocket launch/explosion,
+        /// the anti-god weapon's build-up (progress 0..1, the "charging" sound) and its beam.</summary>
+        public static event System.Action<float3, float3> OnTracer;
+        public static event System.Action<float3> OnRocketLaunch;
+        public static event System.Action<float3> OnRocketExplode;
+        public static event System.Action<float3, float> OnAntiGodCharge;
+        public static event System.Action<float3, float3> OnAntiGodFire;
+        public static void RaiseTracer(float3 from, float3 to) => OnTracer?.Invoke(from, to);
+        public static void RaiseRocketLaunch(float3 position) => OnRocketLaunch?.Invoke(position);
+        public static void RaiseRocketExplode(float3 position) => OnRocketExplode?.Invoke(position);
+        public static void RaiseAntiGodCharge(float3 position, float progress) => OnAntiGodCharge?.Invoke(position, progress);
+        public static void RaiseAntiGodFire(float3 from, float3 to) => OnAntiGodFire?.Invoke(from, to);
+
         public static void RaiseVictimHit(float3 position, float strength, bool involvesLocalPlayer)
         {
             if (involvesLocalPlayer) Shake = math.max(Shake, math.clamp(strength / 120f, 0.1f, 0.6f));

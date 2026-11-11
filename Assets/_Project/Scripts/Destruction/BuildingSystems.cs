@@ -62,6 +62,7 @@ namespace ToLive.Destruction
                 if (r.Chunk < 0 || r.Chunk >= count || bs.IsBroken(r.Chunk)) continue;
                 bs.SetBroken(r.Chunk);
                 ToLive.Power.SurgeFuel.CreditChunk(ref state, r.Instigator);
+                ToLive.Opposition.HeatSource.ChunkBroken(state.EntityManager, r.Instigator); // destruction raises heat
                 bs.LastImpactTick = tick;
                 bs.LastImpactVelocity = r.Velocity;
                 changed = true;

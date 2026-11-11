@@ -59,6 +59,7 @@ namespace ToLive.Flight
             var powers = SystemAPI.GetComponentLookup<ToLive.Power.PowerState>(true);
             var moves = SystemAPI.GetComponentLookup<ToLive.Power.MoveState>(true);
             var hasPowerCfg = SystemAPI.TryGetSingleton<ToLive.Power.PowerConfig>(out var powerCfg);
+            var drives = SystemAPI.GetComponentLookup<ToLive.Opposition.UnitDrive>(true); // server-only AI steering (response units)
 
             // WithAll<Simulate>: Netcode enables Simulate only on ghosts this world should simulate
             // this tick (all of them on the server, just your own player on a client).
@@ -113,7 +114,8 @@ namespace ToLive.Flight
                         s.Gear = FlightGear.Hover;
                         break;
                     default:
-                        Step(ref s, input, fcfg, dt);
+                        if (drives.HasComponent(entity)) DriveStep(ref s, drives[entity], dt);
+                        else Step(ref s, input, fcfg, dt);
                         break;
                 }
 
@@ -147,6 +149,16 @@ namespace ToLive.Flight
                 var queue = SystemAPI.GetBuffer<BreakRequest>(graph);
                 queue.AddRange(broken.AsArray());
             }
+        }
+
+        /// <summary>AI body (response unit): steer toward the requested velocity and turn to face.</summary>
+        static void DriveStep(ref FlightState s, in ToLive.Opposition.UnitDrive d, float dt)
+        {
+            s.Gear = FlightGear.Hover;
+            s.Velocity = MoveTowards(s.Velocity, d.Wish, math.max(1f, d.Accel) * dt);
+            s.Yaw = MoveTowardsAngle(s.Yaw, d.FaceYaw, 120f * dt);
+            s.Pitch = MoveTowardsAngle(s.Pitch, 0f, 120f * dt);
+            s.Bank = 0f;
         }
 
         static void Step(ref FlightState s, in PlayerInput input, in FlightConfig cfg, float dt)

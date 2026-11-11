@@ -84,6 +84,10 @@ namespace ToLive.Combat
             {
                 var c = combat.ValueRO;
                 if (c.Action != CombatAction.KnockedOut || CombatSystem.Before(tick, c.ActionEndTick)) continue;
+                // response units are destroyed (UnitAISystem), the rival has its own longer delay (RivalSystem)
+                if (SystemAPI.HasComponent<ToLive.Opposition.ResponseUnit>(entity)) continue;
+                if (SystemAPI.HasComponent<ToLive.Opposition.CharacterKind>(entity) &&
+                    SystemAPI.GetComponent<ToLive.Opposition.CharacterKind>(entity).Kind == ToLive.Opposition.CharacterKind.Rival) continue;
 
                 float3 pos; float yaw;
                 if (SystemAPI.HasComponent<TrainingDummy>(entity))
@@ -213,6 +217,21 @@ namespace ToLive.Combat
 
                 if (command >= DebugCommandRequest.FillSurgeMeter && command <= DebugCommandRequest.BenchRitualSetup)
                     ApplyPowerDebug(ref state, command, senderId);
+
+                if (command >= DebugCommandRequest.HeatUp && command <= DebugCommandRequest.BenchUnits &&
+                    SystemAPI.TryGetSingletonRW<ToLive.Opposition.HeatDirector>(out var director))
+                {
+                    switch (command)
+                    {
+                        case DebugCommandRequest.HeatUp: director.ValueRW.PendingLevelDelta = (sbyte)math.min(3, director.ValueRO.PendingLevelDelta + 1); break;
+                        case DebugCommandRequest.HeatDown: director.ValueRW.PendingLevelDelta = (sbyte)math.max(-3, director.ValueRO.PendingLevelDelta - 1); break;
+                        case DebugCommandRequest.ClearUnits: director.ValueRW.PendingClear = 1; break;
+                        case DebugCommandRequest.SpawnEachUnit: director.ValueRW.PendingSpawnEach = 1; break;
+                        case DebugCommandRequest.RivalToggle: director.ValueRW.PendingRivalToggle = 1; break;
+                        case DebugCommandRequest.RivalDifficulty: director.ValueRW.PendingRivalDifficulty = 1; break;
+                        case DebugCommandRequest.BenchUnits: director.ValueRW.PendingBenchUnits = cmd.ValueRO.Arg; break;
+                    }
+                }
 
                 if (SystemAPI.TryGetSingletonEntity<BuildingGraph>(out var graph))
                 {
