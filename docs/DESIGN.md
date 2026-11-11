@@ -264,7 +264,83 @@ They all go through one queue, `CrowdHazards` / `CrowdHazard`.
 - Contesting: standings are already per god.
 - "Drained and expelled": replaces the respawn in `CombatServerSystem` and `RivalSystem`.
 
-## Where things live
+## Milestone 4B: crises, ownership, rebuild and scar, defeat
+
+**Core loop.** A crisis breaks out. You fly in and end it either by protecting people or by force. The district's trust or fear shifts, and its crowd reacts. Holding the district grows your power (tier progress). The district changes, and so does who shows up next. Another player can arrive at any point.
+
+**The crisis director** (server, `CrisisSystem`, numbers on **Crisis Config**):
+- One crisis at a time, the first about 25 s in, then about 45 s after each one ends.
+- The crisis is replicated compactly on the district ghost (`CrisisState`: kind, marker, timer, progress, failing chunk, outcome), so a late joiner sees it live.
+- Clients draw a beacon column visible from the air, a red ring around a failing chunk, a HUD banner with the objective and **both ways to resolve it**, a screen marker with distance, and an outcome banner.
+- SFX hooks: `CombatFx.OnCrisisStart` and `OnCrisisEnd`.
+
+| Crisis | Protect | Force | Ignored |
+|---|---|---|---|
+| **Disaster: the failing tower** (only a god can stop it) | Chunks of the breakable tower start to fail one at a time (red ring, 2.5 s warning). Hover next to the failing chunk and **guard** to hold it up while people evacuate. Hold 6. | Bring the tower down yourself: break 12 chunks (cutting the base collapses the rest) | The tower comes down on the street |
+| **Attack** | Units spawn and shoot into a crowd (or, in a trust-held district, VANTA attacks it). Destroy them with little collateral (≤5 deaths + chunks/5 that you cause). | Destroy them while killing people or wrecking the street | The attackers leave; the holder loses standing |
+| **Uprising** | People near the most feared god rise up. They defy it (its fear drains every second) and don't flee. Stay near them and harm no one for 12 s. | Kill 8 rioters: a massacre, lasting fear, bodies | The target loses fear |
+
+**Disaster design, two candidates.**
+- **(a) Failing tower (chosen).** It reuses the breakable building, structural collapse, guard, flight and the crowd's evacuation. Both paths read clearly: hold it up, or bring it down.
+- **(b) Energy breach (rejected).** A growing rift you contain with the beam. It would need a new damage-field system, and it uses the building and the crowd less.
+
+**Outcomes.**
+- Outcomes go through `DistrictSource`: +30 trust when protected; +35 fear and a little −trust when ended by force; the holder loses standing when a crisis fails.
+- The cause feed names the cause.
+- Who comes next follows ownership:
+  - **dominance-held:** uprisings and attacks; heat never drops below police; bigger waves;
+  - **trust-held:** disasters, and VANTA as the attacker.
+
+**VANTA in crises.** It takes the opposite approach to the leading player:
+- **When the leader is trusted or nobody leads,** it goes for force: it flies to the crisis and beams it, aiming at the tower's base during a disaster.
+- **When the leader is feared,** it protects: it holds failing chunks up (guarding after a reaction delay) and fights the attackers.
+- A human nearby takes priority, so there's always a contest.
+
+**Ownership.** After a crisis or a defeat, a god whose trust or fear is at least 30, and 5 more than any other god's, **holds** the district through trust or dominance.
+- The HUD shows the holder, and the city takes the holder's colour at full strength.
+- A holder whose standing fades below half the threshold loses it.
+- Holding feeds tier progress (lifetime fuel per second): tiers come from district control.
+
+**Rebuild and scar** (server-decided, through the existing broken mask and body ghosts):
+- **Trust-held:**
+  - the breakable tower rebuilds one supported chunk every 2 s;
+  - bodies are cleared after 30 s, then people return home one every 2 s;
+  - towers come down.
+- **Dominance-held:**
+  - damage and bodies stay;
+  - one **fortification tower** is raised every 15 s (up to 8; grey-box shaft and barricade with a band in the holder's colour);
+  - *What towers do:* they shoot any other god who comes within 70 m of them (light damage, a visible shot), so the holder's ground pushes back on challengers.
+
+**Defeat: drained and expelled** (replaces knock-out and respawn for players and VANTA; the dummy and units keep the old rule):
+- The loser loses 40% of their trust and fear in the district; the winner takes half of that.
+- The loser loses their surge meter (a surge ends in burnout).
+- After the knock-out the loser comes back **at the district edge** and is locked out for 15 s: pushed back if they fly in, unable to gain standing. The army also stops chasing them.
+- The HUD says so.
+
+**Contesting.** Standing is per god, the population and its fuel are shared and scarce, and the recolouring follows the holder. So a second player can flip a held district through the crisis loop, or by beating the holder there (verified with two players in one process).
+
+**Two scripted 15-minute sessions** (2026-11-11, same length, same district, VANTA present, the crisis director left to run):
+
+| End state | Protector | Tyrant |
+|---|---|---|
+| Crises | 12; most protected; VANTA ended 2 disasters by force | 14; all ended by force |
+| Holder | the player, through trust | the player, through dominance |
+| Meter | −0.87 | +0.87 |
+| Trust / fear | 151 / 3 | 0 / 70 |
+| People alive | 640 / 640 | 312 / 640 (328 bodies) |
+| The tower | rebuilt 119 chunks over the session | scarred |
+| Fortification towers | 0 | 8 |
+| Heat / army | 0 / none | level 3 / 11 units |
+| Tier | 2 | 2 |
+| Defeats | none | repeatedly drained and expelled by the army |
+
+Screenshots: `docs/screenshots/m4b-*.png`.
+
+**4A fixes.**
+- **Bodies:** lighter figures and an unlit, brighter, bigger blood pool, readable in building shadow.
+- **City colour:** accents use the colour's hue at a capped intensity, so trust reads cyan instead of blooming to white.
+- **Crowds:** people within 80% of the eruption radius freeze while a ritual builds up (they cower instead of outrunning it). Beams and collapses kill as before.
+
 
 | What | Where |
 |---|---|

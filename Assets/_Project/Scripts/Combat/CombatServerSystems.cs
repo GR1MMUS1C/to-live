@@ -86,6 +86,8 @@ namespace ToLive.Combat
                 if (c.Action != CombatAction.KnockedOut || CombatSystem.Before(tick, c.ActionEndTick)) continue;
                 // response units are destroyed (UnitAISystem), the rival has its own longer delay (RivalSystem)
                 if (SystemAPI.HasComponent<ToLive.Opposition.ResponseUnit>(entity)) continue;
+                // milestone 4B: gods are drained and expelled instead (DefeatSystem); the dummy keeps this rule
+                if (SystemAPI.HasComponent<ToLive.Crisis.DefeatState>(entity) && SystemAPI.HasSingleton<ToLive.Crisis.CrisisConfig>()) continue;
                 if (SystemAPI.HasComponent<ToLive.Opposition.CharacterKind>(entity) &&
                     SystemAPI.GetComponent<ToLive.Opposition.CharacterKind>(entity).Kind == ToLive.Opposition.CharacterKind.Rival) continue;
 
@@ -226,6 +228,12 @@ namespace ToLive.Combat
 
                 if (command == DebugCommandRequest.CrowdReset && SystemAPI.TryGetSingletonRW<ToLive.District.CrowdServer>(out var crowd))
                     crowd.ValueRW.PendingReset = math.max(1, cmd.ValueRO.Arg * 10);
+                if ((command == DebugCommandRequest.CrisisStart || command == DebugCommandRequest.CrisisOutcome) &&
+                    SystemAPI.TryGetSingletonRW<ToLive.Crisis.CrisisDirector>(out var crisisDirector))
+                {
+                    if (command == DebugCommandRequest.CrisisStart) crisisDirector.ValueRW.PendingStart = (byte)math.clamp((int)cmd.ValueRO.Arg, 1, 3);
+                    else crisisDirector.ValueRW.PendingOutcome = (byte)math.clamp((int)cmd.ValueRO.Arg, 1, 3);
+                }
                 if (command == DebugCommandRequest.CitizenGhostProbe)
                     ToLive.District.CitizenGhostProbeSystem.Pending = cmd.ValueRO.Arg * 10;
 

@@ -203,3 +203,30 @@ Builds/Windows/ToLive.exe -tolive-bench -tolive-cap 1000 -tolive-units 10 -toliv
 - Frame time is within run-to-run noise from 10 to 640 citizens, and the crowd's bandwidth stays at about 8 B per snapshot.
 - 320 looked sparse from the street (about one person every 20 m of sidewalk). 640 reads as a crowd.
 - The limit is the number of baked homes, not performance. More citizens need more homes, which the district generator would have to place.
+
+# Crises (Milestone 4B)
+
+Measured on the same machine on 2026-11-11. Windows development build, 1600×900. Running at the same time: 640 citizens, 10 army units fighting, the rival present, and the whole building collapsing. `-tolive-crisis K` starts crisis K first (1 disaster, 2 attack, 3 uprising).
+
+```bash
+Builds/Windows/ToLive.exe -tolive-bench -tolive-cap 1000 -tolive-units 10 -tolive-crowd 640 -tolive-crisis 2 -tolive-out bench-crisis.csv -screen-fullscreen 0 -screen-width 1600 -screen-height 900
+```
+
+| crisis | fight avg ms | collapse avg ms | fps | first-3 s median ms | p99 ms | worst ms |
+|---|---|---|---|---|---|---|
+| none (the director started its own about 25 s in) | 1.83 | 2.01 | 496 | 1.84 | 3.58 | 15.5 |
+| disaster | 2.01 | 2.13 | 469 | 2.01 | 4.10 | 4.9 |
+| attack (up to 14 units alive) | 1.98 | 2.06 | 486 | 1.94 | 3.64 | 16.3 |
+| uprising | 1.93 | 2.07 | 483 | 1.85 | 3.46 | 15.1 |
+
+**Bandwidth** with an attack crisis live, a heat-2 army, 640 citizens, 52 bodies and 2 players (Editor, client snapshot metrics): **160 B average, 407 B worst** per snapshot.
+
+| Ghost type | Average per snapshot |
+|---|---|
+| District state (crowd + crisis + ownership) | 15 B |
+| Bodies (static) | 2.5 B |
+| Police drones | 58 B |
+| Gunships | 40 B |
+| Rockets | 16 B |
+
+**Conclusion:** crises, ownership and the rebuild/fortify logic don't measurably change frame time, and they add about 7 B per snapshot to the district ghost. No caps needed changing.

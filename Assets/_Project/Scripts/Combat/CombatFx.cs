@@ -41,6 +41,12 @@ namespace ToLive.Combat
         public static void RaiseAntiGodCharge(float3 position, float progress) => OnAntiGodCharge?.Invoke(position, progress);
         public static void RaiseAntiGodFire(float3 from, float3 to) => OnAntiGodFire?.Invoke(from, to);
 
+        /// <summary>SFX hooks for milestone 4B crises: a crisis starts (kind) / ends (outcome).</summary>
+        public static event System.Action<float3, byte> OnCrisisStart;
+        public static event System.Action<float3, byte> OnCrisisEnd;
+        public static void RaiseCrisisStart(float3 position, byte kind) => OnCrisisStart?.Invoke(position, kind);
+        public static void RaiseCrisisEnd(float3 position, byte outcome) => OnCrisisEnd?.Invoke(position, outcome);
+
         public static void RaiseVictimHit(float3 position, float strength, bool involvesLocalPlayer)
         {
             if (involvesLocalPlayer) Shake = math.max(Shake, math.clamp(strength / 120f, 0.1f, 0.6f));

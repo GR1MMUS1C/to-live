@@ -77,5 +77,6 @@ namespace ToLive.Rival
         public uint NextBeamTick;
         public uint GrabPressTick;
         public byte ChainGrab;          // this chain will try a grab when the target is staggered
+        public byte BeamResting;        // milestone 4B crisis: letting the beam recharge
     }
 }

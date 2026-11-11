@@ -102,8 +102,15 @@ namespace ToLive.District
 
             var aliveBits = SystemAPI.GetBuffer<CitizenAliveBits>(districtEntity).ToNativeArray(Allocator.Temp);
             var moodBits = SystemAPI.GetBuffer<CitizenMoodBits>(districtEntity).ToNativeArray(Allocator.Temp);
-            var leaderColor = PowerLook.Instance != null ? PowerLook.Instance.EnergyColor(d.LeaderAlignment) : Color.white;
+            // milestone 4B: a district HELD by a god takes that god's colour at full strength (trust cyan /
+            // dominance crimson); otherwise the leading god's colour, by how strongly they lead
+            var holdState = SystemAPI.HasComponent<ToLive.Crisis.DistrictHold>(districtEntity) ? SystemAPI.GetComponent<ToLive.Crisis.DistrictHold>(districtEntity) : default;
+            var held = holdState.Holder != Entity.Null && holdState.Mode != ToLive.Crisis.DistrictHold.None;
+            var colourAlignment = held ? (holdState.Mode == ToLive.Crisis.DistrictHold.Trust ? -1f : 1f) : d.LeaderAlignment;
+            var leaderColor = PowerLook.Instance != null ? PowerLook.Instance.EnergyColor(colourAlignment) : Color.white;
             var leaderLdr = leaderColor.maxColorComponent > 1f ? leaderColor / leaderColor.maxColorComponent : leaderColor;
+            var uprising = SystemAPI.HasComponent<ToLive.Crisis.CrisisState>(districtEntity) ? SystemAPI.GetComponent<ToLive.Crisis.CrisisState>(districtEntity) : default;
+            var rioting = uprising.Phase == ToLive.Crisis.CrisisPhase.Active && uprising.Kind == ToLive.Crisis.CrisisKind.Uprising;
 
             var transforms = GetComponentLookup<LocalTransform>();
             var colors = GetComponentLookup<URPMaterialPropertyBaseColor>();
@@ -165,7 +172,11 @@ namespace ToLive.District
                 m_Pos[i] = pos;
                 var rot = math.lengthsq(facing.xz) > 1e-4f ? quaternion.LookRotationSafe(math.normalize(new float3(facing.x, 0, facing.z)), new float3(0, 1, 0)) : transforms[e].Rotation;
                 transforms[e] = LocalTransform.FromPositionRotation(new float3(pos.x, y + 0.9f, pos.z), rot);
-                if (colors.HasComponent(e) && mood == Mood.Gather)
+                if (colors.HasComponent(e) && mood == Mood.Gather && rioting && math.distance(pos.xz, uprising.Position.xz) < uprising.Radius + 10f)
+                {
+                    colors[e] = new URPMaterialPropertyBaseColor { Value = new float4(0.55f, 0.08f, 0.06f, 1f) }; // rioters: angry red
+                }
+                else if (colors.HasComponent(e) && mood == Mood.Gather)
                 {
                     var shade = 0.42f + 0.18f * ((i * 37) % 10) / 10f;
                     var c = Color.Lerp(new Color(shade, shade, shade), leaderLdr, 0.35f);
@@ -180,15 +191,17 @@ namespace ToLive.District
             ecb.Playback(EntityManager);
 
             // ---- recolour the city: leader colour by how strongly they hold it ----
-            var hold = math.saturate(d.Hold);
-            var target = d.Leader == Entity.Null ? Unheld : math.lerp(Unheld, new float4(leaderColor.r, leaderColor.g, leaderColor.b, 1f) * (1.2f + 1.6f * hold), math.smoothstep(0.05f, 0.8f, hold)); // brighter = held harder (blooms)
+            var hold = held ? math.max(0.75f, math.saturate(d.Hold)) : math.saturate(d.Hold) * 0.6f;
+            // the hue stays readable: LDR hue times a capped intensity (an HDR colour pushed too far blooms to white)
+            var hue = new float4(leaderLdr.r, leaderLdr.g, leaderLdr.b, 1f);
+            var target = d.Leader == Entity.Null && !held ? Unheld : math.lerp(Unheld, hue * (0.9f + 0.5f * hold), math.smoothstep(0.05f, 0.8f, hold)); // brighter = held harder
             m_Accent = math.lerp(m_Accent, target, 1f - math.exp(-1.5f * dt));
             foreach (var (accent, color) in SystemAPI.Query<RefRO<DistrictAccent>, RefRW<URPMaterialPropertyBaseColor>>())
             {
                 var s = accent.ValueRO.Strength;
                 color.ValueRW.Value = new float4(math.lerp(Unheld.xyz, m_Accent.xyz, math.saturate(s)) * math.max(1f, s), 1f);
             }
-            UpdateSkyTint(new Color(m_Accent.x, m_Accent.y, m_Accent.z), d.Leader == Entity.Null ? 0f : hold);
+            UpdateSkyTint(new Color(m_Accent.x, m_Accent.y, m_Accent.z), d.Leader == Entity.Null && !held ? 0f : hold);
 
             // ---- HUD view ----
             DistrictView.Present = true;
