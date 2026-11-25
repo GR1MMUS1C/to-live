@@ -161,6 +161,7 @@ GameObject:
   - component: {fileID: 182064175}
   - component: {fileID: 182064174}
   - component: {fileID: 182064173}
+  - component: {fileID: 182064176}
   m_Layer: 0
   m_Name: Power Look
   m_TagString: Untagged
@@ -211,6 +212,8 @@ MonoBehaviour:
   LiftRadius: 16
   LiftHeight: 4
   GlassRange: 45
+  DominanceFormAlignment: 0.35
+  DominanceFormMinTier: 2
 --- !u!4 &182064175
 Transform:
   m_ObjectHideFlags: 0
@@ -226,6 +229,27 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &182064176
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 182064172}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c14668e0d1642ba4d9fc957cd2ce1892, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ToLive.Player.HeroPresenter
+  HeroPrefab: {fileID: 5168115285671456593, guid: 416d5f8b974da204e978807d99319209, type: 3}
+  DominancePrefab: {fileID: 0}
+  FootOffset: -1
+  GroundedDistance: 0.4
+  SpeedDamping: 0.1
+  NormalTint: {r: 0.92, g: 0.92, b: 0.92, a: 1}
+  KnockedOutTint: {r: 0.32, g: 0.32, b: 0.34, a: 1}
+  HitFlashTint: {r: 3, g: 3, b: 3, a: 1}
+  FormFlashTime: 0.35
 --- !u!1 &513012203
 GameObject:
   m_ObjectHideFlags: 0

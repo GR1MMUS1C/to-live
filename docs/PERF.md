@@ -230,3 +230,20 @@ Builds/Windows/ToLive.exe -tolive-bench -tolive-cap 1000 -tolive-units 10 -toliv
 | Rockets | 16 B |
 
 **Conclusion:** crises, ownership and the rebuild/fortify logic don't measurably change frame time, and they add about 7 B per snapshot to the district ghost. No caps needed changing.
+
+# Hero model (rigged character on players)
+
+Measured on the same machine on 2026-11-25 with the Milestone 4B command: Windows development build, 1600×900, crisis 2 (attack), 640 citizens, 10 units, the rival present, and the whole building collapsing. The camera follows the local player, so the hero is on screen the whole run.
+
+This is an A/B on the same day. **Before** is the 11 November build without the hero, run alternately with **after**, the new build. The hero is one 60k-triangle skinned mesh with 2K textures and an Animator.
+
+| build | idle avg ms | collapse avg ms | fps | first-3 s median ms | p99 ms | worst ms |
+|---|---|---|---|---|---|---|
+| before, run 1 | 1.96 | 2.12 | 472 | 1.96 | 3.98 | 17.1 |
+| before, run 2 (outlier, background load) | 3.44 | 3.27 | 306 | 4.25 | 13.77 | 31.3 |
+| before, run 3 | 2.10 | 2.28 | 439 | 1.93 | 4.64 | 16.3 |
+| after, run 1 | 2.20 | 2.34 | 427 | 2.16 | 4.27 | 18.1 |
+| after, run 2 | 2.27 | 2.40 | 416 | 2.12 | 5.13 | 16.9 |
+| after, run 3 | 2.59 | 2.43 | 412 | 2.27 | 4.49 | 15.7 |
+
+**Conclusion:** leaving out the outlier, the hero costs about **0.2–0.3 ms** per frame (collapse average 2.20 → 2.39 ms, p99 4.31 → 4.63 ms). The worst frame is still the collapse spawn (about 16–18 ms either way). Compared with the 4B table above (1.98 / 2.06 / 3.64 ms), the numbers are within the same range. With two players there are two skinned meshes; each extra hero should add roughly the same small cost.
