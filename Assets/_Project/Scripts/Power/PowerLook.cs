@@ -31,6 +31,14 @@ namespace ToLive.Power
         public float LiftHeight = 4f;
         public float GlassRange = 45f;
 
+        [Header("Hero form (HeroPresenter)")]
+        [Tooltip("Alignment (-1 trust .. +1 dominance) at or above which a character wears the dominance model.")]
+        [Range(-1f, 1f)] public float DominanceFormAlignment = 0.35f;
+        [Tooltip("...and its tier is at least this high (a surge always counts).")]
+        public int DominanceFormMinTier = 2;
+        [Tooltip("Alignment must drop this far below the threshold before the hero changes back (stops flicker).")]
+        public float DominanceFormHysteresis = 0.1f;
+
         public static PowerLook Instance { get; private set; }
         void OnEnable() => Instance = this;
 

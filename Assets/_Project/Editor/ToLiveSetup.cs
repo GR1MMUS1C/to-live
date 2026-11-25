@@ -438,6 +438,8 @@ namespace ToLive.EditorTools
             var lookGo = new GameObject("Power Look");
             lookGo.AddComponent<ToLive.Power.PowerLook>();
             lookGo.AddComponent<ToLive.Power.PowerPresenter>().PowerVolume = powerVolume;
+            BuildHeroLook(out var heroPrefab, out var heroDominance); // rigged hero on players (ToLiveSetup.Hero.cs)
+            AttachHeroPresenter(lookGo, heroPrefab, heroDominance);
             systems.AddComponent<PerfBenchmark>();
             ui.GameplayScene = subScene;
 

@@ -263,6 +263,17 @@ Debug keys:
 
 **To tune:** everything is on **Crisis Config** in the District subscene.
 
+## 1g. The hero look (2 minutes)
+
+Every human player is now the rigged hero instead of the grey capsule. The training dummy and VANTA stay capsules for now.
+1. **Host** and fly down to a street. Within about 0.4 m of the ground the hero stands, then **walks and runs** as you move (W A S D). The faster you hover, the faster the legs go, up to twice the clip speed.
+2. **Take off.** In the air the hero holds one pose (a frame of the run) until we have flight clips. Cruise and boost lean it forward into the flying pose, like the capsule did.
+3. **Dominance form.** Press **]** a few times (debug fear). When your alignment passes 0.35 at tier 2 (press **F7** for tier 2), a short crimson flash plays. That's where the dominance model swaps in once its rig exists; until then the base model stays. A surge always counts as high tier.
+4. **Feedback.** Hits still flash the hero white and a knockout turns it grey.
+5. **With two players** each sees the other as the hero too. When a player leaves, their hero disappears.
+
+To rebuild the hero after changing its textures or FBX files, use **Tools > To Live > Build Hero Look**.
+
 ## 2. Two players on one PC (Multiplayer Play Mode)
 
 The **Multiplayer Play Mode** package is installed. It runs a second, lightweight Editor as player 2.
@@ -279,8 +290,7 @@ The **Multiplayer Play Mode** package is installed. It runs a second, lightweigh
    - On both screens, the broken chunks should match exactly, because the server decides them.
    - Debris is cosmetic and simulated separately on each PC, so the piles can look a little different on each screen.
 6. Each window controls its own player, and you should see the other player moving in each window.
-   - Player 1 is **orange** and player 2 is **blue**.
-   - The yellow marker shows which way each player faces.
+   - Both players are the hero model (the capsule colours and the yellow front marker now only show on the dummy and VANTA).
 
 Only the focused window receives keyboard and mouse input. A gamepad can control one window while the keyboard controls the other.
 
@@ -306,6 +316,9 @@ You can change all tuning values in the Inspector without touching code.
   2. Select **Flight Config**.
   3. Change the values. They are grouped as Hover, Cruise, Boost, Banking and Collision.
   - With the subscene open you can tune during Play and see the effect immediately (Unity re-bakes live).
+- **Hero look:** select **Power Look** in `Main.unity`.
+  - **Hero Presenter** holds the foot offset, the grounded distance, the run playback speed and the knocked-out / hit-flash tints.
+  - **Power Look > Hero form** holds the alignment and tier at which the dominance model is worn.
 - **Camera:** select **Game Systems** in `Main.unity` and use the **Flight Camera Rig** component.
   - It holds distance and field of view at hover vs. boost, lag, orbit sensitivity and invert Y.
 - **Bindings:** double-click `Assets/_Project/Input/ToLive.inputactions`.

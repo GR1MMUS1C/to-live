@@ -1,0 +1,9 @@
+# Large binary art under Assets/_Project/Art goes through Git LFS.
+# Files tracked before this file existed stay as normal git objects.
+Assets/_Project/Art/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Art/**/*.FBX filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Art/**/*.glb filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Art/**/*.png filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Art/**/*.tga filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Art/**/*.psd filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Art/**/*.exr filter=lfs diff=lfs merge=lfs -text
