@@ -95,6 +95,9 @@ namespace ToLive.Combat
         public const byte BenchUnits = 16;
         // Milestone 4A: crowds
         public const byte CrowdReset = 17;        // respawn the crowd with Arg*10 citizens (bodies cleared)
-        public const byte CitizenGhostProbe = 18; // benchmark option A: Arg*10 citizens as individual ghosts      // benchmark: spawn Arg response units near the sender and blame the humans
+        public const byte CitizenGhostProbe = 18; // benchmark option A: Arg*10 citizens as individual ghosts
+        // Milestone 4B: crises
+        public const byte CrisisStart = 19;       // start crisis kind Arg (1 disaster, 2 attack, 3 uprising)
+        public const byte CrisisOutcome = 20;     // force the live crisis' outcome Arg (1 protected, 2 by force, 3 failed)      // benchmark: spawn Arg response units near the sender and blame the humans
     }
 }

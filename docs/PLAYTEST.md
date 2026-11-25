@@ -70,6 +70,8 @@ Pressing R3 for the ritual also toggles lock-on, and L3 is boost. That's harmles
 | End | Remove every response unit and rocket |
 | Insert | Rival on/off (overrides the "one human = rival" rule until you press it again) |
 | Delete | Cycle the rival's difficulty: easy, normal, hard (shown on its name plate) |
+| F10 | Start the next crisis type (disaster, attack, uprising, in turn) |
+| F11 / F12 | Force the live crisis to end protected / by force |
 
 ### Gears
 
@@ -218,6 +220,48 @@ Play this twice, the same way each time but with the opposite attitude, then com
 - the crowd fuel rates.
 
 **Heat follows dominance.** The **Trusted Heat Scale** and **Heat Per Civilian Death** settings are on **Opposition Config**.
+
+## 1f. Milestone 4B: crises decide who owns the district (15 minutes, play twice)
+
+Crises come on their own, the first after about 25 s and then about 45 s after each ends.
+- Each one shows a coloured **beacon** column you can see from the air, a **CRISIS banner** with both ways to resolve it, and a **marker** with its distance.
+- When it ends, an **outcome banner** says how.
+- The bottom panel shows who **holds** the district.
+
+Debug keys:
+- **F10** starts the next crisis type (disaster, attack, uprising, in turn).
+- **F11** forces the live crisis to end as protected.
+- **F12** forces it to end by force.
+
+**Run 1: protector (about 7 minutes).**
+1. **Disaster (the failing tower).**
+   - A red ring appears around one chunk high on the tower, with a red line down to the street. Fly into the ring and hold **guard (LB)** until it settles; that chunk is held up. Do it 6 times.
+   - People nearby evacuate.
+   - Result: PROTECTED, +trust, and you hold the district through trust.
+2. **Attack.** Fly to the marker and destroy the drones and gunships **away from the people**: few deaths caused by you means PROTECTED.
+3. **Defeat VANTA in front of a crowd** if it shows up.
+4. **Watch the district change.**
+   - Break the tower a bit, then watch it rebuild chunk by chunk.
+   - Bodies are cleared and people walk back.
+   - The city glows cyan.
+   - Your tier progress grows while you hold the district.
+5. **VANTA takes the other side.** When you're the trusted leader, VANTA goes for force: it flies to the crisis and beams it, aiming at the tower's base. Fight it there.
+
+**Run 2: tyrant (about 7 minutes).**
+1. **Disaster:** cut the tower's base with your beam or a boost dive; 12 broken chunks ends it by force.
+2. **Attack:** destroy the attackers without caring who's in the way (people die): ENDED BY FORCE.
+3. **Uprising** (people rise against you, red-tinted, and they don't flee):
+   - Kill 8 of them to crush it, or try the other way: stay near them, guard, and harm no one for 12 s.
+4. **Watch the district change.**
+   - The city turns crimson.
+   - Damage and bodies stay.
+   - Fortification towers rise one every 15 s, with bands in your colour. Get your second player (or VANTA) near one: it shoots them.
+   - The army patrols permanently and comes in bigger waves.
+5. **Get knocked out.** You're **DRAINED AND EXPELLED**: you lose 40% of your standing here, come back at the district edge, and can't fly in for 15 s.
+
+**With two players:** one of you holds the district. The other can flip it by resolving crises better, or by beating the holder there; the winner takes part of the loser's influence.
+
+**To tune:** everything is on **Crisis Config** in the District subscene.
 
 ## 2. Two players on one PC (Multiplayer Play Mode)
 

@@ -29,6 +29,8 @@ namespace ToLive.UI
         public static int Units;
         /// <summary>Milestone 4A: respawn the crowd with this many citizens first (0 = keep the configured crowd).</summary>
         public static int Crowd;
+        /// <summary>Milestone 4B: start this crisis kind (1 disaster, 2 attack, 3 uprising) before the fight (0 = none).</summary>
+        public static int Crisis;
 
         void Start()
         {
@@ -42,6 +44,7 @@ namespace ToLive.UI
             Ritual = args.Contains("-tolive-ritual");
             Units = int.TryParse(Arg(args, "-tolive-units"), out var u) ? u : 0;
             Crowd = int.TryParse(Arg(args, "-tolive-crowd"), out var cr) ? cr : 0;
+            Crisis = int.TryParse(Arg(args, "-tolive-crisis"), out var ck) ? ck : 0;
             StartCoroutine(Run(cap, output, quitWhenDone: true, mult));
         }
 
@@ -93,6 +96,7 @@ namespace ToLive.UI
                 DebugCommands.Send(DebugCommandRequest.CrowdReset, (byte)Mathf.Clamp(Crowd / 10, 1, 255));
                 yield return new WaitForSeconds(2f);
             }
+            if (Crisis > 0) DebugCommands.Send(DebugCommandRequest.CrisisStart, (byte)Mathf.Clamp(Crisis, 1, 3));
             if (Units > 0)
             {
                 // the response force (and the rival, solo) arrive and fight us; "idle" is then the fight
@@ -138,13 +142,13 @@ namespace ToLive.UI
                 Avg(idle).ToString("0.00"), Avg(frames).ToString("0.00"), (1000f / Avg(frames)).ToString("0.0"),
                 Pct(first3, 0.5f).ToString("0.00"), Pct(frames, 0.99f).ToString("0.00"), frames.Max().ToString("0.00"),
                 peakLive, peakTotal, DebrisSystem.BrokenChunks, DebrisSystem.TotalDebris,
-                Quote(SystemInfo.processorType), Quote(SystemInfo.graphicsDeviceName), Units, peakUnits, ToLive.Opposition.OppositionView.RivalPresent ? 1 : 0, ToLive.District.DistrictView.Population);
+                Quote(SystemInfo.processorType), Quote(SystemInfo.graphicsDeviceName), Units, peakUnits, ToLive.Opposition.OppositionView.RivalPresent ? 1 : 0, ToLive.District.DistrictView.Population, Crisis);
             try
             {
                 var exists = File.Exists(output);
                 using var w = new StreamWriter(output, append: true);
                 if (!exists)
-                    w.WriteLine("time,target,liveCap,pieceMultiplier,resolution,idleAvgMs,destroyAvgMs,destroyAvgFps,first3sMedianMs,p99Ms,maxMs,peakLiveDebris,peakTotalDebris,brokenChunks,debrisAtEnd,cpu,gpu,unitsRequested,peakUnits,rival,citizens");
+                    w.WriteLine("time,target,liveCap,pieceMultiplier,resolution,idleAvgMs,destroyAvgMs,destroyAvgFps,first3sMedianMs,p99Ms,maxMs,peakLiveDebris,peakTotalDebris,brokenChunks,debrisAtEnd,cpu,gpu,unitsRequested,peakUnits,rival,citizens,crisis");
                 w.WriteLine(LastResult);
             }
             catch (Exception e) { Debug.LogError($"[ToLive] Could not write {output}: {e.Message}"); }

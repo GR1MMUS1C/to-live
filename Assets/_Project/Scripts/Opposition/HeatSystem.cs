@@ -123,6 +123,10 @@ namespace ToLive.Opposition
                 if (blame.ValueRO.Amount > 0f && tick - blame.ValueRO.LastTick > CombatSystem.Ticks(cfg.BlameQuietTime, rate))
                     blame.ValueRW.Amount = math.max(0f, blame.ValueRO.Amount - cfg.BlameDecayPerSecond * dt);
 
+            // milestone 4B: a dominated district is patrolled (heat never drops below police) and gets bigger waves
+            var dominated = SystemAPI.TryGetSingleton<ToLive.Crisis.DistrictHold>(out var hold) && hold.Mode == ToLive.Crisis.DistrictHold.Dominance;
+            var waveBonus = dominated && SystemAPI.TryGetSingleton<ToLive.Crisis.CrisisConfig>(out var crisisCfg) ? crisisCfg.DominatedWaveBonus : 0;
+            if (dominated) heat.Value = math.max(heat.Value, cfg.Level1 + 1f);
             var newLevel = cfg.LevelFor(heat.Value);
             if (newLevel != heat.Level) Debug.Log($"[ToLive] Heat level {heat.Level} -> {newLevel} (heat {heat.Value:0})");
             heat.Level = newLevel;
@@ -178,10 +182,10 @@ namespace ToLive.Opposition
             if (heat.Level >= 1 && CombatSystem.Before(director.NextWaveTick, tick + 1))
             {
                 var total = police + gunships + antigods;
-                for (var i = 0; i < cfg.PolicePerWave && police < cfg.MaxPolice && total < cfg.MaxUnits; i++)
+                for (var i = 0; i < cfg.PolicePerWave + waveBonus && police < cfg.MaxPolice + waveBonus && total < cfg.MaxUnits + waveBonus; i++)
                 { Spawn(ref state, cfg, UnitKind.Police, tick, rate, ref random, false); police++; total++; }
                 if (heat.Level >= 2)
-                    for (var i = 0; i < cfg.GunshipsPerWave && gunships < cfg.MaxGunships && total < cfg.MaxUnits; i++)
+                    for (var i = 0; i < cfg.GunshipsPerWave + waveBonus && gunships < cfg.MaxGunships + waveBonus && total < cfg.MaxUnits + waveBonus; i++)
                     { Spawn(ref state, cfg, UnitKind.Gunship, tick, rate, ref random, false); gunships++; total++; }
                 if (heat.Level >= 3 && antigods < cfg.MaxAntiGod && total < cfg.MaxUnits)
                 { Spawn(ref state, cfg, UnitKind.AntiGod, tick, rate, ref random, false); antigods++; }

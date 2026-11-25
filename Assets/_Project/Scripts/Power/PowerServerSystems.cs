@@ -30,6 +30,15 @@ namespace ToLive.Power
             Add(em, target, amount);
         }
 
+        /// <summary>Tier progress only (lifetime fuel), e.g. from holding a district (milestone 4B).</summary>
+        public static void AddTierProgress(EntityManager em, Entity target, float amount)
+        {
+            if (target == Entity.Null || amount <= 0f) return;
+            using var q = em.CreateEntityQuery(ComponentType.ReadOnly<SurgeFuelQueue>());
+            if (q.CalculateEntityCount() != 1) return;
+            em.GetBuffer<SurgeFuelEvent>(q.GetSingletonEntity()).Add(new SurgeFuelEvent { Target = target, Amount = amount, TierOnly = 1 });
+        }
+
         public static void Add(EntityManager em, Entity target, float amount)
         {
             if (target == Entity.Null || amount <= 0f) return;
@@ -98,7 +107,7 @@ namespace ToLive.Power
                 var p = powers[ev.Target];
                 p.Fuel += ev.Amount;
                 var suppressed = p.SuppressedUntilTick != 0 && CombatSystem.Before(tick, p.SuppressedUntilTick); // hit by the anti-god beam
-                if (p.Phase == SurgePhase.None && !suppressed) p.Meter = math.saturate(p.Meter + ev.Amount * cfg.MeterPerFuel);
+                if (ev.TierOnly == 0 && p.Phase == SurgePhase.None && !suppressed) p.Meter = math.saturate(p.Meter + ev.Amount * cfg.MeterPerFuel);
                 if (p.Tier < 2 && p.Fuel >= cfg.Tier2FuelThreshold)
                 {
                     p.Tier = 2;

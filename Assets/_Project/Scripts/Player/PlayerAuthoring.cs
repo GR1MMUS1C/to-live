@@ -36,6 +36,7 @@ namespace ToLive.Player
                 AddComponent<ToLive.Opposition.CharacterKind>(entity);
                 AddComponent<ToLive.Opposition.HeatBlame>(entity);
                 AddComponent<ToLive.Rival.RivalBrain>(entity);
+                AddComponent<ToLive.Crisis.DefeatState>(entity); // milestone 4B: drained and expelled (server only)
                 AddComponent(entity, new PlayerVisual
                 {
                     Body = authoring.Body != null ? GetEntity(authoring.Body, TransformUsageFlags.Dynamic) : Entity.Null,

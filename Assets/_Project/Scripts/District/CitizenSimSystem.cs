@@ -128,6 +128,11 @@ namespace ToLive.District
                 if (c.LastHitTick == tick && p.y < 30f)
                     pending.Add(new CrowdHazard { Kind = HazardKind.Scare, Position = p, ScareRadius = 25f });
             }
+            // a ritual building up: people near it freeze (the 4A fix: crowds can't simply outrun an eruption)
+            if (hasPowerCfg)
+                foreach (var (power, xf) in SystemAPI.Query<RefRO<PowerState>, RefRO<LocalTransform>>())
+                    if (power.ValueRO.Phase == SurgePhase.Ritual)
+                        pending.Add(new CrowdHazard { Kind = HazardKind.Pin, Position = new float3(xf.ValueRO.Position.x, 0f, xf.ValueRO.Position.z), ScareRadius = powerCfg.EruptionRadius * 0.8f });
             // player / rival beams
             if (hasPowerCfg)
                 foreach (var (move, flight, xf, e) in SystemAPI.Query<RefRO<MoveState>, RefRO<FlightState>, RefRO<LocalTransform>>().WithEntityAccess())
@@ -159,6 +164,7 @@ namespace ToLive.District
             var deaths = new NativeList<(Entity who, ushort index, float3 pos)>(Allocator.Temp);
             var fleeTicks = CombatSystem.Ticks(cfg.FleeTime, rate);
             var eruptionCrowd = new NativeList<Entity>(Allocator.Temp);
+            var rioterDeaths = new NativeList<Entity>(Allocator.Temp);
             foreach (var h in all)
             {
                 var scaredAny = false;
@@ -167,12 +173,18 @@ namespace ToLive.District
                     var c = citizens[i];
                     if (c.Alive == 0) continue;
                     var d = h.Kind == HazardKind.Segment ? SegmentDistance(c.Position + new float3(0, 0.9f, 0), h.Position, h.End) : math.distance(c.Position, h.Position);
-                    if (h.Kind != HazardKind.Scare && d <= h.Radius)
+                    if (h.Kind == HazardKind.Pin)
+                    {
+                        // a ritual building up nearby: too terrified to run (the eruption will catch them)
+                        if (d <= h.ScareRadius) { c.Mood = Mood.Cower; c.MoodUntilTick = tick + CombatSystem.Ticks(1f, rate); }
+                    }
+                    else if (h.Kind != HazardKind.Scare && d <= h.Radius)
                     {
                         c.Alive = 0;
                         deaths.Add((h.Responsible, (ushort)i, c.Position));
+                        if (c.Riot != 0) rioterDeaths.Add(h.Responsible);
                     }
-                    else if (d <= h.ScareRadius)
+                    else if (d <= h.ScareRadius && c.Riot == 0) // rioters stand their ground
                     {
                         scaredAny = true;
                         var near = h.Kind == HazardKind.Segment ? h.End : h.Position;
@@ -182,10 +194,11 @@ namespace ToLive.District
                     }
                     citizens[i] = c;
                 }
-                if (h.Kind != HazardKind.Scare || h.ScareRadius > 0f) PushThreat(ref district, h.Kind == HazardKind.Segment ? h.End : h.Position, tick);
+                if (h.Kind != HazardKind.Pin && (h.Kind != HazardKind.Scare || h.ScareRadius > 0f)) PushThreat(ref district, h.Kind == HazardKind.Segment ? h.End : h.Position, tick);
                 if (h.Source == Cause.EruptionNearCrowd && scaredAny && h.Responsible != Entity.Null) eruptionCrowd.Add(h.Responsible);
             }
             foreach (var who in eruptionCrowd) DistrictSource.Add(em, who, -cfg.TrustLostEruption, cfg.FearPerEruption, Cause.EruptionNearCrowd);
+            foreach (var who in rioterDeaths) ToLive.Crisis.CrisisTallies.Record(em, HeatSource.Responsible(em, who), rioters: 1);
 
             // reckless supersonic passes over people (trust cost, rate-limited per god)
             foreach (var rg in recklessGods)
@@ -215,12 +228,15 @@ namespace ToLive.District
                         var body = em.Instantiate(cfg.BodyPrefab);
                         var yaw = (index * 137.5f) % 360f;
                         em.SetComponentData(body, LocalTransform.FromPositionRotation(pos, quaternion.RotateY(math.radians(yaw))));
-                        em.SetComponentData(body, new CitizenBody { Index = index });
+                        em.SetComponentData(body, new CitizenBody { Index = index, DeathTick = tick });
                     }
                 }
                 citizens = em.GetBuffer<CitizenSim>(serverEntity);
                 foreach (var kv in byWho)
                 {
+                    // a crisis counts everyone it costs, not only deaths a god caused (the army's too)
+                    if (kv.Key != Entity.Null && !HeatSource.IsGod(em, HeatSource.Responsible(em, kv.Key)))
+                        ToLive.Crisis.CrisisTallies.Record(em, kv.Key, deaths: kv.Value);
                     DistrictSource.CiviliansKilled(em, kv.Key, kv.Value);
                     Debug.Log($"[ToLive] {kv.Value} civilians killed (responsible {kv.Key})");
                 }
@@ -242,7 +258,8 @@ namespace ToLive.District
                 if (tick % thinkTicks == (uint)i % thinkTicks)
                 {
                     var scared = (c.Mood == Mood.Flee || c.Mood == Mood.Cower) && CombatSystem.Before(tick, c.MoodUntilTick);
-                    if (!scared)
+                    if (c.Riot != 0) { if (!scared) { c.Mood = Mood.Gather; c.Focus = Entity.Null; } }
+                    else if (!scared)
                     {
                         c.Mood = Mood.Wander; c.Focus = Entity.Null;
                         var bestGather = float.MaxValue;
@@ -276,6 +293,7 @@ namespace ToLive.District
                     case Mood.Gather:
                     {
                         var focus = float3.zero; var found = false;
+                        if (c.Riot != 0) { focus = c.RiotPoint; found = true; }
                         foreach (var g in gods) if (g.Entity == c.Focus) { focus = g.Position; found = true; }
                         if (!found) { c.Mood = Mood.Wander; break; }
                         var angle = i * 2.39996f;

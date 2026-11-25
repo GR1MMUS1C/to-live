@@ -13,6 +13,8 @@ namespace ToLive.District
             {
                 var e = GetEntity(TransformUsageFlags.None);
                 AddComponent<DistrictState>(e);
+                AddComponent(e, new ToLive.Crisis.CrisisState { WarnChunk = -1 }); // milestone 4B: the live crisis
+                AddComponent<ToLive.Crisis.DistrictHold>(e);                       // ... and who holds the district
                 AddBuffer<GodStanding>(e);
                 AddBuffer<CitizenAliveBits>(e);
                 AddBuffer<CitizenMoodBits>(e);

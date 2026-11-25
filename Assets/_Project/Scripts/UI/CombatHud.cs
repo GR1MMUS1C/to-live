@@ -42,6 +42,10 @@ namespace ToLive.UI
         float m_AnnounceUntil;
         static readonly string[] s_HeatNames = { "CALM", "POLICE", "MILITARY", "ANTI-GOD" };
         static readonly string[] s_Difficulty = { "EASY", "NORMAL", "HARD" };
+        static byte s_NextCrisis;
+        // milestone 4B: crisis banner, marker, outcome
+        VisualElement m_CrisisPanel;
+        Label m_CrisisTitle, m_CrisisObjective, m_CrisisProtect, m_CrisisForce, m_CrisisTimer, m_CrisisMarker, m_CrisisOutcome;
         // milestone 4A: the district meter, population, your standing and the cause feed
         VisualElement m_DistrictPanel, m_MeterMarker, m_MeterTrust, m_MeterFear;
         Label m_DistrictLabel, m_StandingLabel;
@@ -75,6 +79,7 @@ namespace ToLive.UI
 
             BuildOppositionHud();
             BuildDistrictHud();
+            BuildCrisisHud();
 
             // "SURGE READY" prompt, centre-bottom.
             m_Ready = MakeLabel(m_Root, "", 30);
@@ -121,6 +126,84 @@ namespace ToLive.UI
             m_Overlay.style.left = StyleKeyword.Auto;
             m_Overlay.style.right = 24;
             m_OverlayText = MakeLabel(m_Overlay, "", 15);
+        }
+
+        void BuildCrisisHud()
+        {
+            // crisis banner: title, objective, both ways to resolve it, timer and distance
+            m_CrisisPanel = Panel(m_Root, 0, 150, 560);
+            m_CrisisPanel.style.left = new Length(50, LengthUnit.Percent);
+            m_CrisisPanel.style.marginLeft = -280;
+            m_CrisisPanel.style.backgroundColor = new Color(0.12f, 0.08f, 0f, 0.6f);
+            m_CrisisTitle = MakeLabel(m_CrisisPanel, "", 18);
+            m_CrisisTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_CrisisTitle.style.color = new Color(1f, 0.75f, 0.3f);
+            m_CrisisObjective = MakeLabel(m_CrisisPanel, "", 14);
+            m_CrisisProtect = MakeLabel(m_CrisisPanel, "", 13);
+            m_CrisisProtect.style.color = new Color(0.55f, 0.9f, 1f);
+            m_CrisisForce = MakeLabel(m_CrisisPanel, "", 13);
+            m_CrisisForce.style.color = new Color(1f, 0.45f, 0.5f);
+            m_CrisisTimer = MakeLabel(m_CrisisPanel, "", 13);
+
+            // world marker (label over the crisis, or an arrow at the screen edge)
+            m_CrisisMarker = MakeLabel(m_Root, "", 15);
+            m_CrisisMarker.style.position = Position.Absolute;
+            m_CrisisMarker.style.color = new Color(1f, 0.75f, 0.3f);
+            m_CrisisMarker.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            // outcome banner
+            m_CrisisOutcome = MakeLabel(m_Root, "", 30);
+            m_CrisisOutcome.style.position = Position.Absolute;
+            m_CrisisOutcome.style.top = new Length(34, LengthUnit.Percent);
+            m_CrisisOutcome.style.left = 0; m_CrisisOutcome.style.right = 0;
+            m_CrisisOutcome.style.unityTextAlign = TextAnchor.MiddleCenter;
+            m_CrisisOutcome.style.unityFontStyleAndWeight = FontStyle.Bold;
+        }
+
+        void UpdateCrisisHud()
+        {
+            var cv = typeof(ToLive.Crisis.CrisisView);
+            var active = ToLive.Crisis.CrisisView.Active;
+            m_CrisisPanel.style.display = active ? DisplayStyle.Flex : DisplayStyle.None;
+            m_CrisisMarker.style.display = DisplayStyle.None;
+            if (active)
+            {
+                m_CrisisTitle.text = ToLive.Crisis.CrisisView.Title + (ToLive.Crisis.CrisisView.RivalApproach == 2 ? "   - VANTA wants it ended by force" : ToLive.Crisis.CrisisView.RivalApproach == 1 ? "   - VANTA is protecting" : "");
+                m_CrisisObjective.text = ToLive.Crisis.CrisisView.Objective;
+                m_CrisisProtect.text = ToLive.Crisis.CrisisView.Protect;
+                m_CrisisForce.text = ToLive.Crisis.CrisisView.Force;
+                var rem = ToLive.Crisis.CrisisView.Remaining;
+                m_CrisisTimer.text = $"{(int)rem / 60}:{(int)rem % 60:00} left   ·   {ToLive.Crisis.CrisisView.Distance:0} m away";
+                var cam = Camera.main;
+                if (cam != null && m_Root.panel != null)
+                {
+                    var sp = cam.WorldToScreenPoint((Vector3)(Unity.Mathematics.float3)ToLive.Crisis.CrisisView.Marker + Vector3.up * 20f);
+                    var label = $"CRISIS  {ToLive.Crisis.CrisisView.Distance:0} m";
+                    var onScreen = sp.z > 0f && sp.x > 0 && sp.x < Screen.width && sp.y > 0 && sp.y < Screen.height;
+                    Vector2 at;
+                    if (onScreen) at = new Vector2(sp.x, sp.y);
+                    else
+                    {
+                        var c = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                        var d = new Vector2(sp.x, sp.y) - c; if (sp.z < 0f) d = -d;
+                        at = c + d.normalized * Mathf.Min(Screen.width, Screen.height) * 0.42f;
+                        label = (d.x < 0 ? "< " : "") + label + (d.x >= 0 ? " >" : "");
+                    }
+                    var pp = RuntimePanelUtils.ScreenToPanel(m_Root.panel, new Vector2(at.x, Screen.height - at.y));
+                    m_CrisisMarker.text = label;
+                    m_CrisisMarker.style.display = DisplayStyle.Flex;
+                    m_CrisisMarker.style.left = pp.x - 60; m_CrisisMarker.style.top = pp.y - 10;
+                }
+            }
+
+            var age = Time.unscaledTime - ToLive.Crisis.CrisisView.OutcomeTime;
+            m_CrisisOutcome.style.display = age < 6f ? DisplayStyle.Flex : DisplayStyle.None;
+            if (age < 6f)
+            {
+                m_CrisisOutcome.text = ToLive.Crisis.CrisisView.Outcome;
+                var a = Mathf.Clamp01(6f - age);
+                m_CrisisOutcome.style.color = ToLive.Crisis.CrisisView.OutcomeGood ? new Color(0.55f, 0.9f, 1f, a) : new Color(1f, 0.45f, 0.45f, a);
+            }
         }
 
         void BuildDistrictHud()
@@ -175,6 +258,7 @@ namespace ToLive.UI
             var who = !ToLive.District.DistrictView.HasLeader ? "nobody holds it" :
                 (ToLive.District.DistrictView.LeaderIsLocal ? "you hold it" : "held by another god") +
                 (ToLive.District.DistrictView.LeaderAlignment < 0f ? " (trust)" : " (dominance)");
+            if (ToLive.Crisis.CrisisView.Holder != "nobody holds it" && ToLive.Crisis.CrisisView.Holder.Length > 0) who = ToLive.Crisis.CrisisView.Holder;
             m_DistrictLabel.text = $"DISTRICT   {who}   ·   people {ToLive.District.DistrictView.Alive} / {ToLive.District.DistrictView.Population}";
             m_MeterTrust.style.width = new Length((1f - v) * 50f, LengthUnit.Percent);
             m_MeterFear.style.width = new Length((1f + v) * 50f, LengthUnit.Percent);
@@ -419,6 +503,10 @@ namespace ToLive.UI
                     if (kb.endKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.ClearUnits);
                     if (kb.insertKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.RivalToggle);
                     if (kb.deleteKey.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.RivalDifficulty);
+                    // milestone 4B
+                    if (kb.f10Key.wasPressedThisFrame) { s_NextCrisis = (byte)(s_NextCrisis % 3 + 1); DebugCommands.Send(DebugCommandRequest.CrisisStart, s_NextCrisis); }
+                    if (kb.f11Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.CrisisOutcome, 1);
+                    if (kb.f12Key.wasPressedThisFrame) DebugCommands.Send(DebugCommandRequest.CrisisOutcome, 2);
                 }
             }
             if (m_Flash != null)
@@ -434,9 +522,10 @@ namespace ToLive.UI
             m_Overlay.style.display = m_ShowOverlay ? DisplayStyle.Flex : DisplayStyle.None;
             if (m_ShowOverlay)
                 m_OverlayText.text = $"{m_FpsText}\nPing {Ping():0} ms\nLive debris {DebrisSystem.LiveDebris}  (total {DebrisSystem.TotalDebris})\n" +
-                                     $"Broken chunks {DebrisSystem.BrokenChunks} / {DebrisSystem.ChunkCount}\nF4 fill surge  F5 reset  F6 dummy guard  F7 tier  F8 dummy ritual  F9 destroy  [ ] alignment\nPgUp/PgDn heat  Home spawn units  End clear units\nIns rival on/off  Del rival difficulty";
+                                     $"Broken chunks {DebrisSystem.BrokenChunks} / {DebrisSystem.ChunkCount}\nF4 fill surge  F5 reset  F6 dummy guard  F7 tier  F8 dummy ritual  F9 destroy  [ ] alignment\nPgUp/PgDn heat  Home spawn units  End clear units\nIns rival on/off  Del rival difficulty\nF10 next crisis  F11 crisis protected  F12 crisis by force";
             UpdateOppositionHud();
             UpdateDistrictHud();
+            UpdateCrisisHud();
             if (!inGame || !FlightCameraRig.HasLocalPlayer)
             {
                 m_TargetPanel.style.display = DisplayStyle.None;
@@ -461,7 +550,9 @@ namespace ToLive.UI
             var ready = phase == ToLive.Power.SurgePhase.None && meter >= 0.999f;
             m_Ready.text = ready ? "SURGE READY  -  hold L3 + R3  (R)" : phase == ToLive.Power.SurgePhase.Burnout ? "BURNOUT" : "";
             m_Ready.style.color = ready ? energyLdr * (0.75f + 0.25f * Mathf.Sin(Time.time * 6f)) : new Color(0.6f, 0.6f, 0.62f);
-            m_Center.text = action == CombatAction.KnockedOut ? "KNOCKED OUT\nrespawning..." : "";
+            m_Center.text = ToLive.Crisis.CrisisView.ExpelledFor > 0f
+                ? (action == CombatAction.KnockedOut ? "DRAINED AND EXPELLED\nyou lost influence in this district" : $"EXPELLED - you can't enter the district for {ToLive.Crisis.CrisisView.ExpelledFor:0} s")
+                : action == CombatAction.KnockedOut ? "KNOCKED OUT\nrespawning..." : "";
 
             if (FlightCameraRig.HasLockTarget)
             {

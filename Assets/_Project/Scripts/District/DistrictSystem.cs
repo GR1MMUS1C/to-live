@@ -84,6 +84,7 @@ namespace ToLive.District
                 m_CreditedUnits.Add(e);
                 var god = HeatSource.Responsible(em, attacker.ValueRO.Value);
                 if (!HeatSource.IsGod(em, god)) continue;
+                ToLive.Crisis.CrisisTallies.Record(em, god, units: 1); // attack crises count who destroyed the attackers
                 if (CountNear(citizens, xf.ValueRO.Position, cfg.UnitThreatRadius) < 3) continue;
                 DistrictSource.Add(em, god, cfg.TrustPerUnitDestroyed, 0f, Cause.UnitDestroyed);
             }

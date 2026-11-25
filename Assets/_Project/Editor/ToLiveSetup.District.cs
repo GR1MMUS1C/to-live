@@ -28,7 +28,7 @@ namespace ToLive.EditorTools
             s_CitizenMat = GetOrCreateMaterial("M_Citizen", Color.white, 0.25f);
             s_LampPoleMat = GetOrCreateMaterial("M_LampPole", new Color(0.3f, 0.3f, 0.32f), 0.3f);
             s_BloodMat = GetOrCreateShaderMaterial("M_Blood", "Universal Render Pipeline/Unlit");
-            s_BloodMat.SetColor("_BaseColor", new Color(0.28f, 0.02f, 0.02f));
+            s_BloodMat.SetColor("_BaseColor", new Color(0.5f, 0.03f, 0.03f)); // unlit: stays readable in building shadow
             EditorUtility.SetDirty(s_BloodMat);
             s_AccentMat = GetOrCreateShaderMaterial("M_DistrictAccent", "Universal Render Pipeline/Unlit");
             s_AccentMat.SetColor("_BaseColor", Color.white); // tinted per instance at runtime
@@ -64,13 +64,13 @@ namespace ToLive.EditorTools
                 figure.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
                 figure.transform.localScale = new Vector3(0.45f, 0.85f, 0.4f);
                 figure.GetComponent<MeshRenderer>().sharedMaterial = s_CitizenMat;
-                figure.AddComponent<URPMaterialPropertyBaseColorAuthoring>().color = new Color(0.3f, 0.29f, 0.29f);
+                figure.AddComponent<URPMaterialPropertyBaseColorAuthoring>().color = new Color(0.62f, 0.6f, 0.58f);
                 var blood = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 blood.name = "Blood";
                 Object.DestroyImmediate(blood.GetComponent<Collider>());
                 blood.transform.SetParent(go.transform, false);
                 blood.transform.localPosition = new Vector3(0.15f, 0.02f, 0.1f);
-                blood.transform.localScale = new Vector3(1.9f, 0.005f, 1.5f);
+                blood.transform.localScale = new Vector3(2.6f, 0.005f, 2.1f);
                 blood.GetComponent<MeshRenderer>().sharedMaterial = s_BloodMat;
                 blood.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 go.AddComponent<CitizenBodyAuthoring>();
@@ -182,6 +182,45 @@ namespace ToLive.EditorTools
                 Accent(head, 1.5f);
                 head.isStatic = true;
             }
+
+            // ---- milestone 4B: fortification spots (towers raised when the district is dominated) ----
+            var forts = new GameObject("Fortifications");
+            var fortSpots = new List<Vector2>();
+            for (var a = 1; a < centres.Count - 1; a++)
+            for (var b2 = 1; b2 < centres.Count - 1; b2++)
+                if ((a + b2) % 2 == 0) fortSpots.Add(new Vector2(centres[a] - 7f, centres[b2] - 7f));
+            for (var i = 0; i < fortSpots.Count && i < 8; i++)
+            {
+                var sx = fortSpots[i].x; var sz = fortSpots[i].y;
+                var shaft = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                shaft.name = $"Tower_{i}";
+                Object.DestroyImmediate(shaft.GetComponent<Collider>());
+                shaft.transform.SetParent(forts.transform, false);
+                shaft.transform.position = new Vector3(sx, 8f, sz);
+                shaft.transform.localScale = new Vector3(3f, 16f, 3f);
+                shaft.GetComponent<MeshRenderer>().sharedMaterial = s_LampPoleMat;
+                shaft.AddComponent<ToLive.Crisis.FortificationAuthoring>().Index = i;
+                shaft.GetComponent<ToLive.Crisis.FortificationAuthoring>().TopHeight = 8.5f;
+                var band = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                band.name = $"TowerBand_{i}";
+                Object.DestroyImmediate(band.GetComponent<Collider>());
+                band.transform.SetParent(forts.transform, false);
+                band.transform.position = new Vector3(sx, 15.5f, sz);
+                band.transform.localScale = new Vector3(3.6f, 1.4f, 3.6f);
+                Accent(band, 1.6f);
+                band.AddComponent<ToLive.Crisis.FortificationAuthoring>().Index = i;
+                band.GetComponent<ToLive.Crisis.FortificationAuthoring>().TopHeight = 1f;
+                var wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                wall.name = $"Barricade_{i}";
+                Object.DestroyImmediate(wall.GetComponent<Collider>());
+                wall.transform.SetParent(forts.transform, false);
+                wall.transform.position = new Vector3(sx + 5f, 1f, sz);
+                wall.transform.localScale = new Vector3(1f, 2f, 9f);
+                wall.GetComponent<MeshRenderer>().sharedMaterial = s_LampPoleMat;
+                wall.AddComponent<ToLive.Crisis.FortificationAuthoring>().Index = i;
+                wall.GetComponent<ToLive.Crisis.FortificationAuthoring>().TopHeight = 15.5f;
+            }
+            new GameObject("Crisis Config").AddComponent<ToLive.Crisis.CrisisConfigAuthoring>();
 
             var cfg = new GameObject("District Config").AddComponent<DistrictConfigAuthoring>();
             cfg.StatePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DistrictStatePrefabPath);

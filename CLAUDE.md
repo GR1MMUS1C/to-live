@@ -16,7 +16,7 @@
   - the player prefab
   - the District subscene
   - `Main.unity`
-- **Tuning values:** flight numbers live in `FlightConfigAuthoring`, combat numbers in `CombatConfigAuthoring`, transformation/beam/grab numbers in `PowerConfigAuthoring`, the power look in `PowerLook`, debris settings in `DebrisConfigAuthoring`, heat and response-force numbers in `OppositionConfigAuthoring`, rival behaviour in `RivalConfigAuthoring`, crowd/district trust, fear and fuel numbers in `DistrictConfigAuthoring` and camera numbers in `FlightCameraRig`.
+- **Tuning values:** flight numbers live in `FlightConfigAuthoring`, combat numbers in `CombatConfigAuthoring`, transformation/beam/grab numbers in `PowerConfigAuthoring`, the power look in `PowerLook`, debris settings in `DebrisConfigAuthoring`, heat and response-force numbers in `OppositionConfigAuthoring`, rival behaviour in `RivalConfigAuthoring`, crowd/district trust, fear and fuel numbers in `DistrictConfigAuthoring`, crisis, ownership, rebuild/fortify and defeat numbers in `CrisisConfigAuthoring` and camera numbers in `FlightCameraRig`.
   Expose new tuning values in the Inspector the same way.
 - **Testing from the CLI:** `Assets/_Project/Editor/DevProbe.cs` can fake input (`FakeInput`, `FakeCombat`, `PlayCode` button sequences), teleport, report combat and break state per world, break chunks and run the benchmark. PowerShell strips double quotes from `script eval`, so call it with code that has no string literals.
 - **Networking rule:** gameplay that must agree between players (hits, breaks) is decided on the server and replicated as compact state. Cosmetics (debris, flashes, trails, shake) are simulated locally per client.

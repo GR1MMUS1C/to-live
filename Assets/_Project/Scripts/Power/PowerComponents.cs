@@ -33,6 +33,7 @@ namespace ToLive.Power
         [GhostField(Quantization = 100)] public float BeamEnergy;   // 0..1
         [GhostField] public byte Erupted;                           // eruption already happened this ritual
         [GhostField] public uint SuppressedUntilTick;               // anti-god beam: no surge meter gain until this tick
+        [GhostField] public uint ExpelledUntilTick;                 // milestone 4B: drained and expelled, locked out of the district until this tick
     }
 
     /// <summary>Beam and grab state (predicted, like CombatState).</summary>
@@ -58,6 +59,7 @@ namespace ToLive.Power
     {
         public Entity Target;
         public float Amount;   // in "fuel units" (see PowerConfig)
+        public byte TierOnly;  // 1 = lifetime fuel only (tier progress from holding a district), no surge meter
     }
 
     /// <summary>Tag on the singleton entity holding the <see cref="SurgeFuelEvent"/> buffer (server).</summary>

@@ -62,6 +62,8 @@ namespace ToLive.Opposition
             foreach (var (kind, combat, xf, flight, e) in SystemAPI.Query<RefRO<ToLive.Opposition.CharacterKind>, RefRO<CombatState>, RefRO<LocalTransform>, RefRO<FlightState>>().WithEntityAccess())
             {
                 if (combat.ValueRO.Action == CombatAction.KnockedOut) continue;
+                // milestone 4B: an expelled god has been thrown out of the district; the army lets them go
+                if (SystemAPI.HasComponent<PowerState>(e)) { var ex = SystemAPI.GetComponent<PowerState>(e).ExpelledUntilTick; if (ex != 0 && CombatSystem.Before(tick, ex)) continue; }
                 var blame = SystemAPI.HasComponent<HeatBlame>(e) ? SystemAPI.GetComponent<HeatBlame>(e).Amount : 0f;
                 gods.Add(new God { Entity = e, Position = xf.ValueRO.Position, Velocity = flight.ValueRO.Velocity, Blame = blame });
             }
@@ -107,7 +109,21 @@ namespace ToLive.Opposition
                 if (brain.Pinned == 0 && level < u.Kind && !anyBlamed && u.Mode != UnitMode.Retreat) { u.Mode = UnitMode.Retreat; brain.ModeTick = tick; target = Entity.Null; u.Target = Entity.Null; }
 
                 var drive = new UnitDrive { Accel = stats.Accel, FaceYaw = f.Yaw };
-                if (u.Mode == UnitMode.Retreat)
+                // milestone 4B attack crisis: shoot into the crowd unless a god comes close enough to fight
+                var crowdAttack = em.HasComponent<ToLive.Crisis.CrowdAttacker>(e) && u.Mode != UnitMode.Retreat &&
+                                  (target == Entity.Null || math.distance(tgt.Position, pos) > 60f);
+                if (crowdAttack)
+                {
+                    var point = em.GetComponentData<ToLive.Crisis.CrowdAttacker>(e).Point;
+                    var away = math.normalizesafe(new float3(pos.x - point.x, 0, pos.z - point.z), new float3(0, 0, 1));
+                    var desired = point + away * stats.PreferredRange * 0.8f + new float3(0, stats.HeightAbove + 10f, 0);
+                    var seek = desired - pos; var len = math.length(seek);
+                    drive.Wish = len > 0.01f ? seek / len * math.min(stats.Speed, len * 0.8f) : float3.zero;
+                    drive.FaceYaw = math.degrees(math.atan2(point.x - pos.x, point.z - pos.z));
+                    u.Mode = UnitMode.Engage; u.Target = Entity.Null;
+                    if (!busy && !CombatSystem.Before(tick, brain.NextFireTick)) FireAtCrowd(ref state, ref u, ref brain, ref random, e, pos, point, stats, cfg, tick, rate);
+                }
+                else if (u.Mode == UnitMode.Retreat)
                 {
                     var outward = math.normalizesafe(new float3(pos.x, 0, pos.z), new float3(1, 0, 0));
                     drive.Wish = outward * stats.Speed * 1.5f + new float3(0, 3f, 0);
@@ -293,6 +309,54 @@ namespace ToLive.Opposition
                     return;
                 }
             }
+        }
+
+        /// <summary>Attack crisis: police shoot people near the point, gunships rocket it.</summary>
+        static void FireAtCrowd(ref SystemState state, ref ResponseUnit u, ref UnitBrain brain, ref Unity.Mathematics.Random random, Entity self, float3 pos,
+            float3 point, in UnitStats stats, in OppositionConfig cfg, uint tick, int rate)
+        {
+            var em = state.EntityManager;
+            var interval = 1.6f;
+            using (var cq = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.Crisis.CrisisConfig>()))
+                if (cq.CalculateEntityCount() == 1) interval = cq.GetSingleton<ToLive.Crisis.CrisisConfig>().AttackFireInterval;
+            brain.NextFireTick = tick + CombatSystem.Ticks(interval * random.NextFloat(0.8f, 1.25f) * (u.Kind == UnitKind.Gunship ? 2f : 1f), rate);
+            // aim at a real person near the point (people flee, so the attackers follow them)
+            var aim = point + new float3(random.NextFloat(-8f, 8f), 0.9f, random.NextFloat(-8f, 8f));
+            using (var sq = em.CreateEntityQuery(ComponentType.ReadOnly<ToLive.District.CrowdServer>()))
+                if (sq.CalculateEntityCount() == 1)
+                {
+                    var citizens = em.GetBuffer<ToLive.District.CitizenSim>(sq.GetSingletonEntity(), true);
+                    var best = float.MaxValue;
+                    for (var i = 0; i < citizens.Length; i++)
+                    {
+                        if (citizens[i].Alive == 0) continue;
+                        var d = math.distance(citizens[i].Position, aim);
+                        if (d < best && d < 45f) { best = d; aim = citizens[i].Position + new float3(0, 0.9f, 0); }
+                    }
+                }
+            if (u.Kind == UnitKind.Gunship && cfg.RocketPrefab != Entity.Null)
+            {
+                var dir = math.normalizesafe(aim - pos);
+                var r = em.Instantiate(cfg.RocketPrefab);
+                em.SetComponentData(r, LocalTransform.FromPositionRotation(pos + dir * 3f, quaternion.LookRotationSafe(dir, new float3(0, 1, 0))));
+                em.SetComponentData(r, new Rocket { Velocity = dir * cfg.RocketSpeed, Owner = self, SpawnTick = tick });
+                u.ShotTick = tick; u.ShotEnd = pos + dir * 3f; u.ShotHit = 0;
+                return;
+            }
+            var hit = random.NextFloat() < 0.45f;
+            u.ShotTick = tick; u.ShotEnd = aim; u.ShotHit = (byte)(hit ? 1 : 0);
+            if (hit) ToLive.District.CrowdHazards.Kill(em, new float3(aim.x, 0f, aim.z), 1.2f, 20f, self, ToLive.District.Cause.CiviliansKilled);
+            else ToLive.District.CrowdHazards.Scare(em, new float3(aim.x, 0f, aim.z), 20f);
+        }
+
+        /// <summary>A hit from something that isn't a unit (fortification towers): same shared path.</summary>
+        public static float HitFrom(EntityManager em, Entity attacker, Entity victim, float damage, float3 dir, float push, uint tick, int rate)
+        {
+            using var q = em.CreateEntityQuery(ComponentType.ReadOnly<CombatConfig>());
+            using var pq = em.CreateEntityQuery(ComponentType.ReadOnly<PowerConfig>());
+            var cc = q.GetSingleton<CombatConfig>();
+            var ctx = new HitContext { Tick = tick, Rate = rate, RespawnDelay = cc.RespawnDelay, Combat = cc, HasPower = pq.CalculateEntityCount() == 1, Power = pq.CalculateEntityCount() == 1 ? pq.GetSingleton<PowerConfig>() : default };
+            return HitCharacter(em, attacker, victim, damage, dir, push, false, 0f, ctx, false);
         }
 
         /// <summary>
